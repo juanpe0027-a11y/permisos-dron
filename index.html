@@ -234,7 +234,7 @@ function mensaje(t){ $('msgEntrada').innerHTML = t ? `<div class="aviso error">$
 $('btnBuscar').onclick = () => {
   if (!$('entrada').value.trim() && punto) { mensaje(''); return consultar(); }
   const r = leerPunto($('entrada').value);
-  if (r==='corto') return mensaje('Los enlaces cortos de Maps no se pueden leer. En Maps mantén pulsado el punto, copia las coordenadas que salen arriba y pégalas aquí.');
+  if (r==='corto') return mensaje('Los enlaces cortos de Maps (goo.gl) no llevan las coordenadas dentro, y los antiguos de goo.gl ya no funcionan ni en Google. Haz una de estas dos cosas:<br>• Toca el punto en el mapa de abajo.<br>• En Google Maps, mantén pulsado el punto, toca las coordenadas que salen arriba (se copian) y pulsa «Pegar».');
   if (!r || Math.abs(r[0])>90 || Math.abs(r[1])>180) return mensaje('No entiendo esas coordenadas. Ejemplos: 38.6996, -0.4749  o  38°41′58.72″ N, 0°28′29.77″ W');
   mensaje(''); fijar(r, true);
 };
