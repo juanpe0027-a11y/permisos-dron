@@ -110,7 +110,23 @@ details summary{cursor:pointer;font-weight:600}
 </header>
 <main>
   <section class="card">
-    <h2>1. Punto de vuelo</h2>
+    <h2>1. Vuelo: fecha, horario y altura</h2>
+    <div class="row">
+      <div><label for="altura">Altura máxima sobre el suelo (m)</label><input id="altura" type="number" min="1" max="120" value="120"></div>
+      <div><label for="fecha">Fecha</label><input id="fecha" type="date"></div>
+    </div>
+    <div class="row">
+      <div><label for="horaIni">Hora inicio</label><input id="horaIni" type="time" value="10:00"></div>
+      <div><label for="horaFin">Hora fin</label><input id="horaFin" type="time" value="12:00"></div>
+    </div>
+    <label for="finalidad">Finalidad del vuelo</label>
+    <input id="finalidad" placeholder="Ej.: fotografía y vídeo de la zona">
+    <label class="check"><input id="foto" type="checkbox" checked> Vuelo fotográfico / vídeo</label>
+    <div><label for="urbano">Entorno urbano</label><select id="urbano"><option value="auto">Automático (según el Catastro)</option><option value="si">Sí, es entorno urbano</option><option value="no">No, es campo / rústico</option></select></div>
+  </section>
+
+  <section class="card">
+    <h2>2. Lugar del vuelo</h2>
     <label for="entrada">Coordenadas, dirección o lo que compartas desde Google Maps</label>
     <div class="campo">
       <input id="entrada" placeholder="Coordenadas, dirección o lugar" autocomplete="off">
@@ -125,22 +141,6 @@ details summary{cursor:pointer;font-weight:600}
     <div id="msgEntrada"></div>
     <div id="mapa"></div>
     <div class="punto" id="txtPunto">También puedes tocar el mapa para elegir el punto.</div>
-  </section>
-
-  <section class="card">
-    <h2>2. Vuelo</h2>
-    <div class="row">
-      <div><label for="altura">Altura máxima sobre el suelo (m)</label><input id="altura" type="number" min="1" max="120" value="120"></div>
-      <div><label for="fecha">Fecha</label><input id="fecha" type="date"></div>
-    </div>
-    <div class="row">
-      <div><label for="horaIni">Hora inicio</label><input id="horaIni" type="time" value="10:00"></div>
-      <div><label for="horaFin">Hora fin</label><input id="horaFin" type="time" value="12:00"></div>
-    </div>
-    <label for="finalidad">Finalidad del vuelo</label>
-    <input id="finalidad" placeholder="Ej.: fotografía y vídeo de la zona">
-    <label class="check"><input id="foto" type="checkbox" checked> Vuelo fotográfico / vídeo</label>
-    <div><label for="urbano">Entorno urbano</label><select id="urbano"><option value="auto">Automático (según el Catastro)</option><option value="si">Sí, es entorno urbano</option><option value="no">No, es campo / rústico</option></select></div>
   </section>
 
   <section class="card" id="cardRes" hidden>
