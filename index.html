@@ -322,6 +322,17 @@ function construirZona(c, a){
   return { c, a, html, nombre, nivel, correos: correosDe(a, html), clave: c.url + '|' + textoPlano.slice(0,300) };
 }
 
+// Zonas cuyo límite inferior queda por encima del dron. LOWER_VAL viene en metros; si se mide
+// sobre el suelo se compara con la altura del vuelo, y si es sobre el mar (o nivel de vuelo FL)
+// se deja margen por la altitud del terreno (el punto más alto de España ronda los 3.700 m).
+const MARGEN_TERRENO = 3800;
+function porEncima(a, h){
+  const v = a.LOWER_VAL;
+  if (typeof v !== 'number' || a.notamId) return false;
+  const sobreSuelo = /^(HEI|AGL|SFC)$/i.test(a.DISTVERTLOWER_CODE || '') || /AGL/i.test(a.DISTVERTLOWER_UOM || '');
+  return sobreSuelo ? v >= h : v >= h + MARGEN_TERRENO;
+}
+
 let consultaN = 0;
 async function consultar(){
   if (!punto) return;
@@ -333,17 +344,22 @@ async function consultar(){
   const capas = CAPAS.filter(c => foto || !c.soloFoto);
   const res = await Promise.allSettled(capas.map(c => consultarCapa(c, p, h)));
   if (n !== consultaN) return;
-  const zonas = [], vistas = new Set(); let fallos = 0;
+  const zonas = [], altas = [], vistas = new Set(); let fallos = 0;
   res.forEach((r, i) => {
     if (r.status !== 'fulfilled'){ fallos++; return; }
-    r.value.forEach(a => { const z = construirZona(capas[i], a); if (!vistas.has(z.clave)){ vistas.add(z.clave); zonas.push(z); } });
+    r.value.forEach(a => {
+      const z = construirZona(capas[i], a);
+      if (vistas.has(z.clave)) return;
+      vistas.add(z.clave);
+      (porEncima(a, h) ? altas : zonas).push(z);
+    });
   });
   const orden = { rojo:0, naranja:1, info:2 };
   zonas.sort((x,y) => orden[x.nivel]-orden[y.nivel]);
-  pintar(zonas, fallos, p, h, foto);
+  pintar(zonas, fallos, p, h, foto, altas);
 }
 
-function pintar(zonas, fallos, p, h, foto){
+function pintar(zonas, fallos, p, h, foto, altas){
   const R = $('resultado'); R.innerHTML = '';
   const hayRojo = zonas.some(z => z.nivel==='rojo');
   const hayNar = zonas.some(z => z.nivel==='naranja' && z.c.titulo!=='Entorno urbano');
@@ -377,6 +393,18 @@ function pintar(zonas, fallos, p, h, foto){
     }
     R.appendChild(d);
   });
+
+  if (altas.length){
+    const det = document.createElement('details'); det.className = 'zona';
+    det.innerHTML = `<summary>Zonas muy por encima de tu vuelo: no te afectan (${altas.length})</summary>`;
+    altas.forEach(z => {
+      const a = z.a, nivel = a.DISTVERTLOWER_UOM === 'FL' ? `FL${a.DISTVERTLOWER_VAL}` : `${a.DISTVERTLOWER_VAL} ${a.DISTVERTLOWER_UOM || ''}`;
+      const p = document.createElement('p'); p.className = 'punto';
+      p.textContent = `${z.c.titulo}${z.nombre ? ` — ${z.nombre}` : ''}: empieza en ${nivel} (unos ${Math.round(a.LOWER_VAL)} m sobre el nivel del mar).`;
+      det.appendChild(p);
+    });
+    R.appendChild(det);
+  }
 }
 
 // ---------- correos ----------
