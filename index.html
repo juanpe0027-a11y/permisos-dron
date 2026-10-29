@@ -5,114 +5,141 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Permisos de Dron</title>
 <meta name="description" content="Consulta las restricciones de ENAIRE Drones en un punto y prepara los correos a las entidades.">
-<meta name="theme-color" content="#0b6fa4">
+<meta name="theme-color" content="#0d4f8b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icono-192.png">
 <link rel="apple-touch-icon" href="icono-192.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root{
-  --bg:#f4f6f8; --card:#ffffff; --text:#1b2530; --muted:#5d6b78; --line:#d9e0e6;
-  --accent:#0b6fa4; --accent-text:#ffffff;
-  --rojo:#c62828; --rojo-bg:#fdecec; --naranja:#b25e00; --naranja-bg:#fff3e0;
-  --info:#1565c0; --info-bg:#e8f1fc; --ok:#2e7d32; --ok-bg:#e8f5e9;
+  --bg:#eef2f6; --card:#ffffff; --text:#14202b; --muted:#5b6876; --line:#dde3ea; --campo:#f6f8fa;
+  --accent:#0d4f8b; --accent-2:#1677c9; --accent-text:#ffffff; --accent-suave:#e6f0fa;
+  --rojo:#c0262d; --rojo-bg:#fdeced; --naranja:#a85a00; --naranja-bg:#fff4e2;
+  --info:#1d5fa8; --info-bg:#e9f1fb; --ok:#1f7a3a; --ok-bg:#e6f4ea;
+  --sombra:0 1px 2px rgba(16,32,48,.06), 0 4px 16px rgba(16,32,48,.06);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#11161b; --card:#1a2128; --text:#e6edf3; --muted:#9aa8b5; --line:#2c3640;
-    --accent:#3ea6e0; --accent-text:#0b1620;
-    --rojo:#ff8a80; --rojo-bg:#3a1d1d; --naranja:#ffb74d; --naranja-bg:#3a2a14;
-    --info:#90caf9; --info-bg:#172b40; --ok:#81c784; --ok-bg:#1b3320;
+    --bg:#0e141a; --card:#161e26; --text:#e4ebf2; --muted:#9aa7b4; --line:#26313c; --campo:#111920;
+    --accent:#4da3ea; --accent-2:#4da3ea; --accent-text:#08131d; --accent-suave:#15283a;
+    --rojo:#ff8a85; --rojo-bg:#3a1c1e; --naranja:#ffb766; --naranja-bg:#382a16;
+    --info:#8fc4f5; --info-bg:#152a3e; --ok:#7fd196; --ok-bg:#16301f;
+    --sombra:0 1px 2px rgba(0,0,0,.4);
   }
 }
 :root[data-theme="dark"]{
-  --bg:#11161b; --card:#1a2128; --text:#e6edf3; --muted:#9aa8b5; --line:#2c3640;
-  --accent:#3ea6e0; --accent-text:#0b1620;
-  --rojo:#ff8a80; --rojo-bg:#3a1d1d; --naranja:#ffb74d; --naranja-bg:#3a2a14;
-  --info:#90caf9; --info-bg:#172b40; --ok:#81c784; --ok-bg:#1b3320;
+  --bg:#0e141a; --card:#161e26; --text:#e4ebf2; --muted:#9aa7b4; --line:#26313c; --campo:#111920;
+  --accent:#4da3ea; --accent-2:#4da3ea; --accent-text:#08131d; --accent-suave:#15283a;
+  --rojo:#ff8a85; --rojo-bg:#3a1c1e; --naranja:#ffb766; --naranja-bg:#382a16;
+  --info:#8fc4f5; --info-bg:#152a3e; --ok:#7fd196; --ok-bg:#16301f;
+  --sombra:0 1px 2px rgba(0,0,0,.4);
 }
 *{box-sizing:border-box}
 [hidden]{display:none !important}
-body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{background:var(--accent);color:var(--accent-text);padding:14px 16px}
-header h1{margin:0;font-size:1.25rem}
-header p{margin:2px 0 0;font-size:.85rem;opacity:.9}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 "Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+header{background:linear-gradient(135deg,#0b3a66 0%,#0d4f8b 55%,#1677c9 100%);color:#fff;padding:18px 16px 22px}
+.cab{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.cab img{width:44px;height:44px;border-radius:12px;background:#fff;padding:4px;flex:none}
+header h1{margin:0;font-size:1.3rem;font-weight:700;letter-spacing:-.01em}
+header p{margin:2px 0 0;font-size:.85rem;opacity:.85}
 main{max-width:760px;margin:0 auto;padding:16px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
-.card h2{font-size:1.05rem;margin:0 0 10px}
-label{display:block;font-size:.85rem;color:var(--muted);margin:8px 0 4px}
-input,select,textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 16px;margin-bottom:16px;box-shadow:var(--sombra)}
+.card h2{display:flex;align-items:center;gap:10px;font-size:1.05rem;font-weight:700;margin:0 0 12px;letter-spacing:-.01em}
+.paso{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-text);font-size:.85rem;font-weight:700;flex:none}
+label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.04em}
+input,select,textarea{width:100%;font:inherit;color:var(--text);background:var(--campo);border:1px solid var(--line);border-radius:10px;padding:11px 12px;transition:border-color .15s, box-shadow .15s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent-2);box-shadow:0 0 0 3px var(--accent-suave);background:var(--card)}
 textarea{min-height:60px}
-.row{display:flex;gap:10px;flex-wrap:wrap}
+.row{display:flex;gap:12px;flex-wrap:wrap}
 .row>*{flex:1 1 140px}
-button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-weight:600;border:0;border-radius:8px;padding:10px 14px;cursor:pointer;text-decoration:none;background:var(--accent);color:var(--accent-text)}
-button.sec,.btn.sec{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:.95rem;font-weight:600;border:0;border-radius:10px;padding:11px 16px;cursor:pointer;text-decoration:none;background:var(--accent);color:var(--accent-text);transition:filter .15s, transform .05s}
+button:hover,.btn:hover{filter:brightness(1.08)}
+button:active,.btn:active{transform:translateY(1px)}
+button.sec,.btn.sec{background:var(--card);color:var(--accent);border:1px solid var(--line)}
+button svg,.btn svg{width:18px;height:18px;flex:none}
 button:disabled{opacity:.5;cursor:default}
-.acciones{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.check{display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--text);font-size:.95rem}
-.check input{width:auto}
+.acciones{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.check{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--text);font-size:.95rem;text-transform:none;letter-spacing:0;font-weight:500}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
 .campo{position:relative}
 .campo input{padding-right:48px}
-.borrar{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:40px;height:40px;padding:0;border-radius:50%;background:transparent;color:var(--muted);font-size:1.2rem}
-#mapa{height:340px;border-radius:10px;margin-top:10px;border:1px solid var(--line)}
-.punto{font-size:.9rem;color:var(--muted);margin-top:8px;word-break:break-word}
-.aviso{padding:10px 12px;border-radius:8px;margin:8px 0;font-size:.95rem}
+.borrar{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:40px;height:40px;padding:0;border-radius:50%;background:transparent;color:var(--muted);font-size:1.1rem}
+#mapa{height:360px;border-radius:12px;margin-top:12px;border:1px solid var(--line)}
+.punto{font-size:.88rem;color:var(--muted);margin-top:8px;word-break:break-word}
+.ayuda{font-size:.85rem;color:var(--muted);margin-top:8px}
+.archivo{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--accent-suave);color:var(--accent);font-size:.9rem;font-weight:600}
+.archivo span{flex:1;word-break:break-word}
+.archivo button{padding:6px 10px;font-size:.85rem}
+.aviso{padding:10px 12px;border-radius:10px;margin:10px 0;font-size:.92rem}
 .aviso.error{background:var(--rojo-bg);color:var(--rojo)}
 .aviso.info{background:var(--info-bg);color:var(--info)}
-.resumen{border-radius:10px;padding:12px 14px;font-weight:600;margin-bottom:12px}
+.resumen{border-radius:12px;padding:14px 16px;font-weight:700;margin-bottom:12px;font-size:1.02rem}
 .resumen.rojo{background:var(--rojo-bg);color:var(--rojo)}
 .resumen.naranja{background:var(--naranja-bg);color:var(--naranja)}
 .resumen.ok{background:var(--ok-bg);color:var(--ok)}
-.zona{border-left:5px solid var(--line);background:var(--card);border-radius:8px;padding:10px 12px;margin:10px 0;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.zona{border:1px solid var(--line);border-left:4px solid var(--line);background:var(--card);border-radius:12px;padding:12px 14px;margin:12px 0}
 .zona.rojo{border-left-color:var(--rojo)}
 .zona.naranja{border-left-color:var(--naranja)}
 .zona.info{border-left-color:var(--info)}
-.zona .tit{font-weight:700;margin-bottom:4px}
-.zona .etq{display:inline-block;font-size:.75rem;font-weight:700;border-radius:999px;padding:2px 8px;margin-right:6px;vertical-align:middle}
+.zona.ok{border-left-color:var(--ok)}
+.zona .tit{font-weight:700;margin-bottom:6px;line-height:1.35}
+.zona .etq{display:inline-block;font-size:.7rem;font-weight:700;border-radius:999px;padding:3px 9px;margin-right:6px;vertical-align:middle;text-transform:uppercase;letter-spacing:.04em}
 .etq.rojo{background:var(--rojo-bg);color:var(--rojo)}
 .etq.naranja{background:var(--naranja-bg);color:var(--naranja)}
-.zona.ok{border-left-color:var(--ok)}
 .etq.ok{background:var(--ok-bg);color:var(--ok)}
-.cuentas{border-collapse:collapse;width:100%;margin:4px 0 10px;font-size:.92rem}
-.cuentas td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.etq.info{background:var(--info-bg);color:var(--info)}
+.cuentas{border-collapse:collapse;width:100%;margin:6px 0 12px;font-size:.9rem;background:var(--campo);border-radius:10px;overflow:hidden}
+.cuentas td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.cuentas tr:last-child td{border-bottom:0}
 .cuentas td:first-child{width:52%;color:var(--muted)}
 .cuentas td:last-child{text-align:right;font-weight:600}
 .txt .cumple{color:var(--ok)}
 .txt .pasa{color:var(--rojo)}
-.etq.info{background:var(--info-bg);color:var(--info)}
 .zona .txt{font-size:.92rem}
 .zona .txt p{margin:6px 0}
-.zona .txt a{color:var(--accent)}
+.zona .txt a{color:var(--accent-2)}
 .zona .txt .rojo{color:var(--rojo);font-weight:600}
-.correos{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.correos{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
 .contactos{list-style:none;margin:6px 0 8px;padding:0}
-.contactos li{padding:6px 0;border-bottom:1px solid var(--line);word-break:break-word}
+.contactos li{padding:8px 0;border-bottom:1px solid var(--line);word-break:break-word}
 .contactos li:last-child{border-bottom:0}
-.contactos a{font-weight:600}
-.contactos .para{font-size:.85rem;color:var(--muted);margin-top:2px}
-.resumen-final h3{font-size:1rem;margin:14px 0 4px}
-.correos .em{font-size:.85rem;color:var(--muted);margin-bottom:6px;word-break:break-all}
-details summary{cursor:pointer;font-weight:600}
-.resumen-final{margin-top:16px;border:2px solid var(--accent)}
+.contactos a{font-weight:600;color:var(--accent-2)}
+.contactos .para{font-size:.84rem;color:var(--muted);margin-top:2px}
+.correos .em{font-size:.75rem;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
+details summary{cursor:pointer;font-weight:700}
+.resumen-final{margin-top:18px;border:2px solid var(--accent)}
+.resumen-final h2{font-size:1.15rem}
+.resumen-final h3{font-size:.8rem;margin:18px 0 4px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .lista-resumen{margin:0;padding-left:20px}
-.lista-resumen li{margin:6px 0;font-size:.95rem}
+.lista-resumen li{margin:8px 0;font-size:.95rem}
 .lista-resumen li.rojo{color:var(--rojo);font-weight:600}
 .lista-resumen li.naranja{color:var(--naranja);font-weight:600}
 .lista-resumen li.ok{color:var(--ok)}
-.pie{font-size:.8rem;color:var(--muted);text-align:center;padding:10px 16px 30px}
+.pie{font-size:.8rem;color:var(--muted);text-align:center;padding:10px 16px 30px;max-width:760px;margin:0 auto}
+.pie a{color:var(--accent-2)}
 .cargando{color:var(--muted);font-style:italic}
+.leaflet-container{font:inherit}
+.leaflet-control-layers label{display:block;margin:2px 0;font-size:.85rem;font-weight:600;color:#14202b;text-transform:none;letter-spacing:0}
+.leaflet-control-layers input{width:auto;padding:0;margin:0 6px 0 0;accent-color:#0d4f8b}
+.leaflet-control-layers-expanded{padding:6px 10px;border-radius:10px}
+.acciones>button,.acciones>.btn{flex:1 1 calc(50% - 4px);white-space:nowrap;padding:11px 8px;gap:6px;font-size:.92rem}
 </style>
 </head>
 <body>
 <header>
-  <h1>Permisos de Dron</h1>
-  <p>Restricciones de ENAIRE Drones en un punto</p>
+  <div class="cab">
+    <img src="icono-192.png" alt="">
+    <div><h1>Permisos de Dron</h1><p>Restricciones de ENAIRE, NOTAM, alturas y contactos para tu vuelo</p></div>
+  </div>
 </header>
 <main>
   <section class="card">
-    <h2>1. Vuelo: fecha, horario y altura</h2>
+    <h2><span class="paso">1</span>Datos del vuelo</h2>
     <div class="row">
-      <div><label for="altura">Altura máxima sobre el suelo (m)</label><input id="altura" type="number" min="1" max="120" value="120"></div>
+      <div><label for="altura">Altura máxima (m sobre el suelo)</label><input id="altura" type="number" min="1" max="120" value="120"></div>
       <div><label for="fecha">Fecha</label><input id="fecha" type="date"></div>
     </div>
     <div class="row">
@@ -126,25 +153,28 @@ details summary{cursor:pointer;font-weight:600}
   </section>
 
   <section class="card">
-    <h2>2. Lugar del vuelo</h2>
-    <label for="entrada">Coordenadas, dirección o lo que compartas desde Google Maps</label>
+    <h2><span class="paso">2</span>Lugar del vuelo</h2>
+    <label for="entrada">Coordenadas, dirección o enlace de Maps</label>
     <div class="campo">
       <input id="entrada" placeholder="Coordenadas, dirección o lugar" autocomplete="off">
       <button id="btnBorrar" type="button" class="borrar" aria-label="Borrar" hidden>✕</button>
     </div>
-    <div class="punto">Copia en Google Maps las coordenadas, la dirección o el código (tipo MGXG+7P Alcoy) y pulsa «Pegar».</div>
+    <div class="ayuda">Pega lo que copies o compartas desde Google Maps (coordenadas, dirección, enlace o código tipo MGXG+7P), toca el mapa o sube la zona en KML / KMZ.</div>
     <div class="acciones">
-      <button id="btnPegar">📋 Pegar de Maps</button>
-      <button id="btnBuscar" class="sec">Consultar</button>
-      <button id="btnGps" class="sec">Mi ubicación</button>
+      <button id="btnPegar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>Pegar</button>
+      <button id="btnBuscar" class="sec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Consultar</button>
+      <button id="btnGps" class="sec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg><span>Mi ubicación</span></button>
+      <button id="btnKml" class="sec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>KML / KMZ</button>
+      <input id="fichKml" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" hidden>
     </div>
+    <div class="archivo" id="archivo" hidden><span id="txtArchivo"></span><button id="btnQuitarKml" class="sec" type="button">Quitar</button></div>
     <div id="msgEntrada"></div>
     <div id="mapa"></div>
-    <div class="punto" id="txtPunto">También puedes tocar el mapa para elegir el punto.</div>
+    <div class="punto" id="txtPunto">Toca el mapa para elegir el punto de vuelo.</div>
   </section>
 
   <section class="card" id="cardRes" hidden>
-    <h2>3. Qué dice ENAIRE</h2>
+    <h2><span class="paso">3</span>Qué dice ENAIRE</h2>
     <div id="resultado"></div>
     <div class="acciones"><a class="btn sec" href="https://drones.enaire.es/" target="_blank" rel="noopener">Abrir ENAIRE Drones</a></div>
   </section>
@@ -171,6 +201,7 @@ details summary{cursor:pointer;font-weight:600}
 <p class="pie">Datos consultados en directo a los servicios públicos de ENAIRE. Es una ayuda para planificar: la referencia oficial es <a href="https://drones.enaire.es/" target="_blank" rel="noopener">drones.enaire.es</a> y la normativa vigente.</p>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const SVC = 'https://servais.enaire.es/insignias/rest/services/';
 const CAPAS = [
@@ -190,7 +221,7 @@ const CAPAS = [
 const NOMBRE_NIVEL = { rojo:'No permitido sin coordinar', naranja:'Condiciones / trámite', ok:'Cumples', info:'Informativo' };
 
 const $ = id => document.getElementById(id);
-let punto = null, marcador = null;
+let punto = null, marcador = null, zonaVuelo = null, capaKml = null;
 
 // ---------- almacenamiento local (solo comodidad) ----------
 const DATOS = ['dNombre','dTel','dOperador','dDron','dCategoria','finalidad','altura'];
@@ -242,11 +273,13 @@ const calles = L.tileLayer(ESRI + 'World_Street_Map/MapServer/tile/{z}/{y}/{x}',
 L.control.layers({ 'Ortofoto':orto, 'Calles':calles }, null, { collapsed:false }).addTo(mapa);
 mapa.on('click', e => {
   const p = [e.latlng.lat, e.latlng.lng];
+  quitarZona();
   $('entrada').value = `${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
   mensaje(''); fijar(p, true);
 });
 
 function fijar(p, consultarYa){
+  quitarZona();
   punto = p;
   if (marcador) marcador.setLatLng(p); else marcador = L.marker(p).addTo(mapa);
   mapa.setView(p, Math.max(mapa.getZoom(), 16));
@@ -254,6 +287,78 @@ function fijar(p, consultarYa){
   $('txtPunto').textContent = textoPunto(p);
   if (consultarYa) consultar();
 }
+
+// ---------- zona de vuelo desde un KML / KMZ ----------
+// Se leen puntos, líneas y polígonos; a ENAIRE se le pregunta por la zona entera y el terreno
+// y el Catastro se miran en varios puntos de ella.
+function coordsKml(el){
+  return (el ? el.textContent : '').trim().split(/\s+/).map(t => t.split(',').map(Number)).filter(c => c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])).map(c => [c[0], c[1]]);
+}
+function leerKml(texto){
+  const doc = new DOMParser().parseFromString(texto, 'text/xml');
+  const todos = tag => [...doc.getElementsByTagNameNS('*', tag)];
+  const anillos = todos('Polygon').map(pg => coordsKml(pg.getElementsByTagNameNS('*', 'outerBoundaryIs')[0]?.getElementsByTagNameNS('*', 'coordinates')[0])).filter(r => r.length >= 3);
+  const lineas = todos('LineString').map(l => coordsKml(l.getElementsByTagNameNS('*', 'coordinates')[0])).filter(l => l.length >= 2);
+  const puntos = todos('Point').map(pt => coordsKml(pt.getElementsByTagNameNS('*', 'coordinates')[0])[0]).filter(Boolean);
+  const nombre = (doc.getElementsByTagNameNS('*', 'name')[0]?.textContent || '').trim();
+  return { anillos, lineas, puntos, nombre };
+}
+// ArcGIS quiere el anillo exterior en sentido horario
+function horario(r){
+  let a = 0; for (let i = 0; i < r.length; i++){ const [x1, y1] = r[i], [x2, y2] = r[(i + 1) % r.length]; a += (x2 - x1) * (y2 + y1); }
+  const c = a > 0 ? r : [...r].reverse();
+  return c[0][0] === c[c.length-1][0] && c[0][1] === c[c.length-1][1] ? c : [...c, c[0]];
+}
+async function cargarKml(fich){
+  let texto;
+  if (/\.kmz$/i.test(fich.name) || (await fich.slice(0, 2).text()) === 'PK'){
+    const zip = await JSZip.loadAsync(fich);
+    const k = zip.file('doc.kml') || zip.file(/\.kml$/i)[0];
+    if (!k) throw new Error('El KMZ no tiene ningún KML dentro.');
+    texto = await k.async('string');
+  } else texto = await fich.text();
+  const g = leerKml(texto);
+  const n = g.anillos.length + g.lineas.length + g.puntos.length;
+  if (!n) throw new Error('No encuentro puntos, líneas ni polígonos en el archivo.');
+  const sr = { wkid:4326 };
+  const consultas = [];
+  if (g.anillos.length) consultas.push({ geometry: JSON.stringify({ rings: g.anillos.map(horario), spatialReference:sr }), geometryType:'esriGeometryPolygon' });
+  if (g.lineas.length) consultas.push({ geometry: JSON.stringify({ paths: g.lineas, spatialReference:sr }), geometryType:'esriGeometryPolyline' });
+  if (g.puntos.length) consultas.push({ geometry: JSON.stringify({ points: g.puntos, spatialReference:sr }), geometryType:'esriGeometryMultipoint' });
+  const vertices = [...g.anillos.flat(), ...g.lineas.flat(), ...g.puntos];
+  const centro = [vertices.reduce((s, v) => s + v[1], 0) / vertices.length, vertices.reduce((s, v) => s + v[0], 0) / vertices.length];
+  const paso = Math.max(1, Math.ceil(vertices.length / 60));
+  const muestras = [centro, ...vertices.filter((_, i) => i % paso === 0).map(v => [v[1], v[0]])];
+  const partes = [g.anillos.length && `${g.anillos.length} polígono(s)`, g.lineas.length && `${g.lineas.length} línea(s)`, g.puntos.length && `${g.puntos.length} punto(s)`].filter(Boolean).join(', ');
+  quitarZona();
+  zonaVuelo = { nombre: g.nombre || fich.name, fichero: fich.name, consultas, centro, muestras, partes };
+  const estilo = { color:'#ffd400', weight:3, fillColor:'#ffd400', fillOpacity:.2 };
+  capaKml = L.featureGroup([
+    ...g.anillos.map(r => L.polygon(r.map(c => [c[1], c[0]]), estilo)),
+    ...g.lineas.map(l => L.polyline(l.map(c => [c[1], c[0]]), estilo)),
+    ...g.puntos.map(c => L.circleMarker([c[1], c[0]], { ...estilo, radius:7, fillOpacity:.8 })),
+  ]).addTo(mapa);
+  mapa.fitBounds(capaKml.getBounds(), { padding:[20, 20], maxZoom:17 });
+  if (marcador){ mapa.removeLayer(marcador); marcador = null; }
+  punto = centro;
+  $('txtArchivo').textContent = `Zona: ${zonaVuelo.nombre} · ${partes}`;
+  $('archivo').hidden = false;
+  $('txtPunto').textContent = `Centro de la zona: ${textoPunto(centro)}`;
+  consultar();
+}
+function quitarZona(){
+  if (capaKml) mapa.removeLayer(capaKml);
+  capaKml = null; zonaVuelo = null;
+  $('archivo').hidden = true; $('fichKml').value = '';
+}
+$('btnKml').onclick = () => $('fichKml').click();
+$('fichKml').onchange = async () => {
+  const f = $('fichKml').files[0]; if (!f) return;
+  avisoInfo(`Leyendo ${f.name}…`);
+  try { await cargarKml(f); mensaje(''); }
+  catch(e){ mensaje(`No se pudo leer el archivo: ${String(e.message || e).replace(/</g, '&lt;')}`); }
+};
+$('btnQuitarKml').onclick = () => { quitarZona(); $('txtPunto').textContent = 'Toca el mapa para elegir el punto de vuelo.'; $('cardRes').hidden = true; punto = null; };
 
 function mensaje(t){ $('msgEntrada').innerHTML = t ? `<div class="aviso error">${t}</div>` : ''; }
 // direcciones y nombres de sitios (lo que trae Google Maps al compartir un lugar)
@@ -367,8 +472,8 @@ $('btnPegar').onclick = async () => {
 };
 $('btnGps').onclick = () => {
   if (!navigator.geolocation || !window.isSecureContext) return mensaje('Este navegador no da la ubicación. Abre la app en Chrome.');
-  const b = $('btnGps'); b.disabled = true; b.textContent = 'Buscando…';
-  const fin = () => { b.disabled = false; b.textContent = 'Mi ubicación'; };
+  const b = $('btnGps'); b.disabled = true; b.querySelector('span').textContent = 'Buscando…';
+  const fin = () => { b.disabled = false; b.querySelector('span').textContent = 'Mi ubicación'; };
   const ok = pos => { fin(); mensaje(''); $('entrada').value = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`; fijar([pos.coords.latitude, pos.coords.longitude], true); };
   const fallo = err => {
     fin();
@@ -493,21 +598,26 @@ function pintarContactos(lista, destino, conZona){
 
 // ---------- consulta ----------
 async function consultarCapa(c, p, h){
-  const q = new URLSearchParams({
-    f:'json', geometry:`${p[1]},${p[0]}`, geometryType:'esriGeometryPoint', inSR:'4326',
-    spatialRel:'esriSpatialRelIntersects', outFields:'*', returnGeometry:'false',
-    where: c.where ? c.where(h) : '1=1'
-  });
-  // ENAIRE a veces no responde a la primera: hasta 3 intentos
-  for (let i = 0; ; i++){
-    try {
-      const r = await fetch(`${SVC}${c.url}/query?${q}`);
-      if (!r.ok) throw new Error(r.status);
-      const d = await r.json();
-      if (d.error) throw new Error(d.error.message);
-      return d.features.map(f => f.attributes);
-    } catch(e){ if (i >= 2) throw e; await new Promise(r => setTimeout(r, 800 * (i + 1))); }
+  const geos = zonaVuelo ? zonaVuelo.consultas : [{ geometry:`${p[1]},${p[0]}`, geometryType:'esriGeometryPoint' }];
+  const salida = [];
+  for (const g of geos){
+    const q = new URLSearchParams({
+      f:'json', ...g, inSR:'4326', spatialRel:'esriSpatialRelIntersects', outFields:'*', returnGeometry:'false',
+      where: c.where ? c.where(h) : '1=1'
+    });
+    // ENAIRE a veces no responde a la primera: hasta 3 intentos
+    for (let i = 0; ; i++){
+      try {
+        const r = zonaVuelo ? await fetch(`${SVC}${c.url}/query`, { method:'POST', body:q }) : await fetch(`${SVC}${c.url}/query?${q}`);
+        if (!r.ok) throw new Error(r.status);
+        const d = await r.json();
+        if (d.error) throw new Error(d.error.message);
+        salida.push(...d.features.map(f => f.attributes));
+        break;
+      } catch(e){ if (i >= 2) throw e; await new Promise(r => setTimeout(r, 800 * (i + 1))); }
+    }
   }
+  return salida;
 }
 
 // ---------- NOTAM: alturas, fechas y horario frente al vuelo previsto ----------
@@ -669,7 +779,7 @@ function limiteAltura(texto, h, suelo){
   const max = Math.max(0, Math.floor(maxAqui));
   // cuadro con las cuentas: terreno, aeródromo, techo y lo que puedes subir aquí
   const filas = [];
-  if (typeof suelo === 'number') filas.push(['Terreno aquí', `${Math.round(suelo)} m sobre el mar`]);
+  if (typeof suelo === 'number') filas.push([zonaVuelo ? 'Terreno más alto de la zona' : 'Terreno aquí', `${Math.round(suelo)} m sobre el mar`]);
   for (const l of lim){
     if (l.arp){
       filas.push(['Aeródromo (ARP)', `${l.arp} m sobre el mar`]);
@@ -809,11 +919,15 @@ async function consultar(){
   $('txtPunto').textContent = `${textoPunto(p)} · consultando…`;
   $('cardRes').scrollIntoView({ behavior:'smooth', block:'start' });
   const capas = CAPAS.filter(c => foto || !c.soloFoto);
-  const pSuelo = fetch(`https://api.open-meteo.com/v1/elevation?latitude=${p[0]}&longitude=${p[1]}`)
-    .then(r => r.json()).then(d => typeof d.elevation?.[0] === 'number' ? d.elevation[0] : null).catch(() => null);
+  const muestras = zonaVuelo ? zonaVuelo.muestras : [p];
+  const pSuelo = fetch(`https://api.open-meteo.com/v1/elevation?latitude=${muestras.map(m => m[0].toFixed(5)).join(',')}&longitude=${muestras.map(m => m[1].toFixed(5)).join(',')}`)
+    .then(r => r.json()).then(d => { const v = (d.elevation || []).filter(x => typeof x === 'number'); return v.length ? Math.max(...v) : null; }).catch(() => null);
   const pUrbano = $('urbano').value !== 'auto'
     ? Promise.resolve({ urbano: $('urbano').value === 'si', motivo: 'lo has marcado tú' })
-    : esUrbano(p).catch(() => null);
+    : zonaVuelo
+      // zona: centro y unos cuantos vértices; basta con que uno sea urbano
+      ? Promise.all(zonaVuelo.muestras.slice(0, 6).map(m => esUrbano(m).catch(() => null))).then(l => l.find(u => u && u.urbano) || l.find(Boolean) || null)
+      : esUrbano(p).catch(() => null);
   const res = await Promise.allSettled(capas.map(c => consultarCapa(c, p, h)));
   const suelo = await pSuelo;
   const urbano = await pUrbano;
@@ -845,7 +959,7 @@ function pintar(zonas, fallos, p, h, foto, altas, suelo){
   else { res.className='resumen ok'; res.textContent='Sin restricciones aeronáuticas en este punto. Revisa los avisos informativos.'; }
   R.appendChild(res);
   const meta = document.createElement('p'); meta.className='punto';
-  meta.textContent = `${textoPunto(p)} · terreno a ${typeof suelo === 'number' ? `${Math.round(suelo)} m` : '¿?'} sobre el mar · hasta ${h} m${foto?' · vuelo fotográfico/vídeo':''} · consultado ${new Date().toLocaleString('es-ES')}`;
+  meta.textContent = `${zonaVuelo ? `Zona «${zonaVuelo.nombre}» (${zonaVuelo.partes}), centro ${textoPunto(p)}` : textoPunto(p)} · terreno ${zonaVuelo ? 'más alto ' : ''}a ${typeof suelo === 'number' ? `${Math.round(suelo)} m` : '¿?'} sobre el mar · hasta ${h} m${foto?' · vuelo fotográfico/vídeo':''} · consultado ${new Date().toLocaleString('es-ES')}`;
   R.appendChild(meta);
   if (fallos) R.insertAdjacentHTML('beforeend', `<div class="aviso error">No respondieron ${fallos} de las capas de ENAIRE. Vuelve a consultar o compruébalo en ENAIRE Drones.</div>`);
   if (!zonas.length) R.insertAdjacentHTML('beforeend','<p>ENAIRE no devuelve ninguna zona en este punto.</p>');
@@ -910,7 +1024,7 @@ function pintarResumen(zonas, altas, h, fallos, suelo){
   const li = (t, clase) => { const e = document.createElement('li'); if (clase) e.className = clase; e.textContent = t; ul.appendChild(e); };
 
   // NOTAM
-  if (!notams.length) li('NOTAM: ninguno en este punto.', 'ok');
+  if (!notams.length) li(`NOTAM: ninguno en ${zonaVuelo ? 'esta zona' : 'este punto'}.`, 'ok');
   else {
     const n = notams.length - notamAfecta.length - notamDuda.length;
     li(`NOTAM: ${notams.length} en la zona → ${notamAfecta.length} te afectan, ${notamDuda.length} por revisar, ${n} no te afectan.`, notamAfecta.length ? 'rojo' : notamDuda.length ? 'naranja' : 'ok');
@@ -952,7 +1066,8 @@ function redactar(z, p, h, foto){
     `Les escribo porque quiero realizar un vuelo de dron en un punto que, según ENAIRE Drones, se encuentra en la zona "${zona}", y me indica este correo como contacto.`,
     '',
     'Datos del vuelo:',
-    `- Ubicación: ${aDms(p[0],'N','S')}, ${aDms(p[1],'E','W')} (${p[0].toFixed(6)}, ${p[1].toFixed(6)})`,
+    zonaVuelo ? `- Zona de vuelo: «${zonaVuelo.nombre}» (${zonaVuelo.partes}); adjunto el archivo ${zonaVuelo.fichero}` : null,
+    `- Ubicación${zonaVuelo ? ' (centro de la zona)' : ''}: ${aDms(p[0],'N','S')}, ${aDms(p[1],'E','W')} (${p[0].toFixed(6)}, ${p[1].toFixed(6)})`,
     `- Mapa: ${enlaceMaps(p)}`,
     `- Fecha: ${fechaBonita()}`,
     `- Horario: de ${$('horaIni').value || '--:--'} a ${$('horaFin').value || '--:--'} (hora local)`,
@@ -968,7 +1083,7 @@ function redactar(z, p, h, foto){
     nombre,
   ];
   if ($('dTel').value.trim()) lineas.push(`Tel.: ${$('dTel').value.trim()}`);
-  return { asunto, cuerpo: lineas.join('\n') };
+  return { asunto, cuerpo: lineas.filter(l => l !== null).join('\n') };
 }
 function abrirCorreo(z, p, h, foto){
   guardar();
