@@ -203,14 +203,17 @@ const enlaceMaps = p => `https://www.google.com/maps?q=${p[0].toFixed(6)},${p[1]
 // ---------- mapa ----------
 const mapa = L.map('mapa').setView([40.2, -3.7], 5);
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+const IGN = (srv, capa, fmt) => `https://www.ign.es/wmts/${srv}?service=WMTS&request=GetTile&version=1.0.0&layer=${capa}&style=default&format=image/${fmt}&tilematrixset=GoogleMapsCompatible&tilematrix={z}&tilerow={y}&tilecol={x}`;
+mapa.options.maxZoom = 20;
+// ortofoto PNOA del IGN con nombres de calles encima (Esri debajo para fuera de España)
+const orto = L.layerGroup([
+  L.tileLayer(ESRI + 'World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:20, maxNativeZoom:19, attribution:'© Esri' }),
+  L.tileLayer(IGN('pnoa-ma', 'OI.OrthoimageCoverage', 'jpeg'), { maxZoom:20, maxNativeZoom:19, attribution:'PNOA © IGN' }),
+  L.tileLayer(IGN('ign-base', 'IGNBaseOrto', 'png'), { maxZoom:20, maxNativeZoom:19 }),
+]).addTo(mapa);
 const calles = L.tileLayer(ESRI + 'World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-  { maxZoom:19, attribution:'© Esri, HERE, OpenStreetMap' }).addTo(mapa);
-const satelite = L.layerGroup([
-  L.tileLayer(ESRI + 'World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, attribution:'© Esri' }),
-  L.tileLayer(ESRI + 'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom:19 }),
-  L.tileLayer(ESRI + 'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom:19 }),
-]);
-L.control.layers({ 'Calles':calles, 'Satélite':satelite }, null, { collapsed:false }).addTo(mapa);
+  { maxZoom:20, maxNativeZoom:19, attribution:'© Esri, HERE, OpenStreetMap' });
+L.control.layers({ 'Ortofoto':orto, 'Calles':calles }, null, { collapsed:false }).addTo(mapa);
 mapa.on('click', e => fijar([e.latlng.lat, e.latlng.lng], true));
 
 function fijar(p, consultarYa){
