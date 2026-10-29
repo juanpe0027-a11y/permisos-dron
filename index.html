@@ -583,7 +583,7 @@ function contactosDe(z){
     lista.push({ tipo:'nota', valor: cn[1].trim(), href:'', entidad:'', para:`ENAIRE no da correo: la solicitud se hace ${/^(Ministerio|Ejército|Centro|Servicio)/.test(cn[1].trim()) ? 'al' : 'a'} ${cn[1].trim().replace(/^(Ministerio|Ejército|Centro|Servicio)/, m => m)}` });
   // entorno urbano: además del enlace informativo, el formulario donde se hace la comunicación
   if (z.c.titulo === 'Entorno urbano')
-    lista.push({ tipo:'web', valor:'https://drones.ses.mir.es/drones-web/', href:'https://drones.ses.mir.es/drones-web/', entidad:'Ministerio del Interior', para:'Formulario para hacer la comunicación del vuelo (mínimo 5 días antes)' });
+    lista.push({ tipo:'web', valor:'https://sede.interior.gob.es/portal/sede/tramites?codAgrupacion=Drones', href:'https://sede.interior.gob.es/portal/sede/tramites?codAgrupacion=Drones', entidad:'Ministerio del Interior', para:'Sede electrónica: trámite de comunicación del vuelo en entorno urbano (mínimo 5 días antes)' });
   return lista;
 }
 const ICONO = { email:'✉️', web:'🌐', tel:'📞', nota:'🏛️' };
