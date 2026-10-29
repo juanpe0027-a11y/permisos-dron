@@ -149,7 +149,7 @@ details summary{cursor:pointer;font-weight:700}
     <label for="finalidad">Finalidad del vuelo</label>
     <input id="finalidad" placeholder="Ej.: fotografía y vídeo de la zona">
     <label class="check"><input id="foto" type="checkbox" checked> Vuelo fotográfico / vídeo</label>
-    <div><label for="urbano">Entorno urbano</label><select id="urbano"><option value="auto">Automático (según el Catastro)</option><option value="si">Sí, es entorno urbano</option><option value="no">No, es campo / rústico</option></select></div>
+    <div><label for="urbano">Entorno urbano</label><select id="urbano"><option value="auto">Automático (IGN y Catastro)</option><option value="si">Sí, es entorno urbano</option><option value="no">No, es campo, playa natural…</option></select></div>
   </section>
 
   <section class="card">
@@ -814,20 +814,62 @@ function marcarUrbano(z, u){
 // ---------- entorno urbano: se mira en el Catastro si la parcela es urbana o rústica ----------
 // Referencia catastral urbana: 7 cifras de manzana; rústica: código de municipio + letra de polígono (46010A0…).
 const CATASTRO = 'https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCoordenadas.asmx';
-async function esUrbano(p){
+// Definición de entorno urbano (RD 517/2024):
+//  a) núcleos de población con edificación consolidada;
+//  b) áreas residenciales, comerciales o industriales (polígonos) con accesos, viales, saneamiento y alumbrado;
+//  c) áreas recreativas de acceso público con construcciones o instalaciones: playas que lo cumplan, parques y jardines.
+// Se mira la ocupación del suelo del IGN (SIOSE), que distingue casco, ensanche, industrial, zona verde urbana y playa,
+// y el Catastro (parcela urbana o rústica, y edificios alrededor).
+async function edificiosCerca(p, metros){
+  const d = metros / 111000, e = d / Math.cos(p[0] * Math.PI / 180);
+  const t = await (await fetch(`https://ovc.catastro.meh.es/INSPIRE/wfsBU.aspx?service=WFS&version=2.0.0&request=GetFeature&typeNames=BU:Building&count=50&srsName=EPSG::4326&bbox=${p[0]-d},${p[1]-e},${p[0]+d},${p[1]+e},urn:ogc:def:crs:EPSG::4326`)).text();
+  return new Set(t.match(/ES\.SDGC\.BU\.[\w]+/g) || []).size;
+}
+async function usoSuelo(p, d = 0.0002){
+  const L = 'LC.LandCoverSurfaces';
+  const u = `https://servicios.idee.es/wms-inspire/ocupacion-suelo?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=${L}&query_layers=${L}&styles=&crs=EPSG:4326&bbox=${p[0]-d},${p[1]-d},${p[0]+d},${p[1]+d}&width=11&height=11&i=5&j=5&info_format=application/json&feature_count=3`;
+  const j = await (await fetch(u)).json();
+  return (j.features || []).map(f => ({ cod: +f.properties.codiige, clase: String(f.properties.codiige_valor || '').trim() }));
+}
+async function parcela(p){
   const q = `SRS=EPSG:4326&Coordenada_X=${p[1]}&Coordenada_Y=${p[0]}`;
   const tipo = pc1 => /^\d{7}$/.test(pc1) ? 'urbana' : 'rústica';
   let t = await (await fetch(`${CATASTRO}/Consulta_RCCOOR?${q}`)).text();
   let m = t.match(/<pc1>([^<]*)<\/pc1>[\s\S]*?<ldt>([^<]*)/);
-  if (m) return { urbano: tipo(m[1]) === 'urbana', motivo: `parcela ${tipo(m[1])} del Catastro: ${m[2]}` };
+  if (m) return { tipo: tipo(m[1]), txt: `parcela ${tipo(m[1])} del Catastro (${m[2]})` };
   // en calles, plazas, parques o playas no hay parcela: se mira la más cercana
   t = await (await fetch(`${CATASTRO}/Consulta_RCCOOR_Distancia?${q}`)).text();
   m = t.match(/<pc1>([^<]*)<\/pc1>[\s\S]*?<dis>([^<]*)/);
-  if (m) return { urbano: tipo(m[1]) === 'urbana', motivo: `parcela ${tipo(m[1])} más cercana del Catastro, a ${Math.round(+m[2])} m` };
-  // sin parcelas cerca: se cuentan los edificios del Catastro en unos 100 m alrededor
-  const d = 0.0009, e = d / Math.cos(p[0] * Math.PI / 180);
-  t = await (await fetch(`https://ovc.catastro.meh.es/INSPIRE/wfsBU.aspx?service=WFS&version=2.0.0&request=GetFeature&typeNames=BU:Building&count=50&srsName=EPSG::4326&bbox=${p[0]-d},${p[1]-e},${p[0]+d},${p[1]+e},urn:ogc:def:crs:EPSG::4326`)).text();
-  const n = new Set(t.match(/ES\.SDGC\.BU\.[\w]+/g) || []).size;
+  if (m) return { tipo: tipo(m[1]), txt: `parcela ${tipo(m[1])} más cercana del Catastro, a ${Math.round(+m[2])} m` };
+  return null;
+}
+async function esUrbano(p){
+  let [usos, parc] = await Promise.all([usoSuelo(p).catch(() => []), parcela(p).catch(() => null)]);
+  // en la orilla sale «mar»: se mira un poco más amplio por si hay playa al lado
+  if (usos.length && usos.every(u => u.cod >= 500)) usos = [...usos, ...(await Promise.all([[.0006,0],[-.0006,0],[0,.0008],[0,-.0008]].map(([a, b]) => usoSuelo([p[0]+a, p[1]+b]).catch(() => [])))).flat()];
+  const playa = usos.find(u => u.cod === 351 || /playa/i.test(u.clase));
+  if (playa){
+    // apartado c): playa de acceso público con construcciones o instalaciones cerca (paseo, chiringuitos, edificios)
+    const n = await edificiosCerca(p, 300).catch(() => null);
+    if (n === null) return { urbano: true, motivo: 'playa: cuenta como entorno urbano si tiene accesos e instalaciones' };
+    return n >= 3
+      ? { urbano: true, motivo: `playa con ${n} construcciones a menos de 300 m; las playas con accesos e instalaciones son entorno urbano` }
+      : { urbano: false, motivo: `playa sin construcciones cerca (playa natural); si tiene paseo o chiringuitos, márcala como urbana` };
+  }
+  // suelo artificial del SIOSE (códigos 1xx) salvo carreteras, vías, puertos, aeropuertos, minas o vertederos
+  const urb = usos.find(u => u.cod >= 100 && u.cod < 200 && !/viario|ferrov|aeropuert|portuari|infraestructura|extracci|miner|vertedero|obra/i.test(u.clase));
+  if (urb){
+    const que = urb.cod === 130 || /industrial/i.test(urb.clase) ? 'polígono o zona industrial'
+      : /verde|parque|jard/i.test(urb.clase) ? 'parque o zona verde urbana'
+      : /comercial|oficina|servicio|equipamiento|deport|educa|sanitar|administra|cultura|religio|penitenci|cementerio|camping/i.test(urb.clase) ? `${urb.clase.toLowerCase()} (servicios o equipamientos)`
+      : `núcleo urbano (${urb.clase.toLowerCase()})`;
+    return { urbano: true, motivo: `${que}, según la ocupación del suelo del IGN` };
+  }
+  if (parc && parc.tipo === 'urbana') return { urbano: true, motivo: parc.txt };
+  if (parc) return { urbano: false, motivo: `${parc.txt}${usos[0] ? `; suelo: ${usos[0].clase.toLowerCase()}` : ''}` };
+  if (usos[0]) return { urbano: false, motivo: `suelo: ${usos[0].clase.toLowerCase()}, según el IGN` };
+  // sin datos: se cuentan los edificios del Catastro alrededor
+  const n = await edificiosCerca(p, 100);
   return { urbano: n >= 3, motivo: `${n} edificio(s) del Catastro a menos de 100 m` };
 }
 
