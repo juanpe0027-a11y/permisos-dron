@@ -836,7 +836,8 @@ async function parcela(p){
   const tipo = pc1 => /^\d{7}$/.test(pc1) ? 'urbana' : 'rústica';
   let t = await (await fetch(`${CATASTRO}/Consulta_RCCOOR?${q}`)).text();
   let m = t.match(/<pc1>([^<]*)<\/pc1>[\s\S]*?<ldt>([^<]*)/);
-  if (m) return { tipo: tipo(m[1]), txt: `parcela ${tipo(m[1])} del Catastro (${m[2]})` };
+  // en el Catastro rústico «Polígono 7 Parcela 275» es una finca de campo, no un polígono industrial
+  if (m) return { tipo: tipo(m[1]), txt: `parcela ${tipo(m[1])} del Catastro (${m[2].replace(/^Pol[ií]gono (\d+) Parcela (\d+)/i, 'finca de campo: polígono catastral $1, parcela $2 —no es un polígono industrial—')})` };
   // en calles, plazas, parques o playas no hay parcela: se mira la más cercana
   t = await (await fetch(`${CATASTRO}/Consulta_RCCOOR_Distancia?${q}`)).text();
   m = t.match(/<pc1>([^<]*)<\/pc1>[\s\S]*?<dis>([^<]*)/);
@@ -851,21 +852,21 @@ async function esUrbano(p){
   if (playa){
     // apartado c): playa de acceso público con construcciones o instalaciones cerca (paseo, chiringuitos, edificios)
     const n = await edificiosCerca(p, 300).catch(() => null);
-    if (n === null) return { urbano: true, motivo: 'playa: cuenta como entorno urbano si tiene accesos e instalaciones' };
+    if (n === null) return { urbano: true, motivo: 'apartado c: las playas con acceso público e instalaciones son entorno urbano' };
     return n >= 3
-      ? { urbano: true, motivo: `playa con ${n} construcciones a menos de 300 m; las playas con accesos e instalaciones son entorno urbano` }
-      : { urbano: false, motivo: `playa sin construcciones cerca (playa natural); si tiene paseo o chiringuitos, márcala como urbana` };
+      ? { urbano: true, motivo: `apartado c: playa de acceso público con ${n} construcciones o instalaciones a menos de 300 m` }
+      : { urbano: false, motivo: `playa sin construcciones ni instalaciones cerca (playa natural): no cumple el apartado c; si tiene paseo, chiringuitos o instalaciones, márcala como urbana` };
   }
   // suelo artificial del SIOSE (códigos 1xx) salvo carreteras, vías, puertos, aeropuertos, minas o vertederos
   const urb = usos.find(u => u.cod >= 100 && u.cod < 200 && !/viario|ferrov|aeropuert|portuari|infraestructura|extracci|miner|vertedero|obra/i.test(u.clase));
   if (urb){
-    const que = urb.cod === 130 || /industrial/i.test(urb.clase) ? 'polígono o zona industrial'
-      : /verde|parque|jard/i.test(urb.clase) ? 'parque o zona verde urbana'
-      : /comercial|oficina|servicio|equipamiento|deport|educa|sanitar|administra|cultura|religio|penitenci|cementerio|camping/i.test(urb.clase) ? `${urb.clase.toLowerCase()} (servicios o equipamientos)`
-      : `núcleo urbano (${urb.clase.toLowerCase()})`;
+    const que = urb.cod === 130 || /industrial/i.test(urb.clase) ? 'apartado b: polígono o zona industrial'
+      : /verde|parque|jard/i.test(urb.clase) ? 'apartado c: parque o jardín urbano'
+      : /comercial|oficina|servicio|equipamiento|deport|educa|sanitar|administra|cultura|religio|penitenci|cementerio|camping/i.test(urb.clase) ? `apartado b: ${urb.clase.toLowerCase()} (zona comercial o de servicios)`
+      : `apartado a: núcleo de población (${urb.clase.toLowerCase()})`;
     return { urbano: true, motivo: `${que}, según la ocupación del suelo del IGN` };
   }
-  if (parc && parc.tipo === 'urbana') return { urbano: true, motivo: parc.txt };
+  if (parc && parc.tipo === 'urbana') return { urbano: true, motivo: `apartados a/b: ${parc.txt}` };
   if (parc) return { urbano: false, motivo: `${parc.txt}${usos[0] ? `; suelo: ${usos[0].clase.toLowerCase()}` : ''}` };
   if (usos[0]) return { urbano: false, motivo: `suelo: ${usos[0].clase.toLowerCase()}, según el IGN` };
   // sin datos: se cuentan los edificios del Catastro alrededor
