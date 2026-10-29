@@ -412,7 +412,7 @@ function paraQue(tipo, valor, ctx, z){
   if (tipo === 'web'){
     if (/interior\.gob\.es|mir\.es/.test(valor)) return 'Información para comunicar el vuelo al Ministerio del Interior (5 días antes) si vuelas en entorno urbano';
     if (/seguridadaerea\.gob\.es/.test(valor)) return 'Normativa de AESA sobre zonas geográficas (solo consulta)';
-    if (/aip\.enaire\.es/.test(valor)) return `Publicación oficial de ENAIRE (AIP) con los detalles de ${zona} (solo consulta)`;
+    if (/aip\.enaire\.es/.test(valor)) return `Más información de ENAIRE sobre ${zona}${/contenido_AIC/.test(valor) ? ': cómo hacer la solicitud' : ''}`;
     return `Página que indica ENAIRE para ${zona}`;
   }
   const como = tipo === 'tel' ? 'Llamar para' : 'Escribir para';
@@ -447,17 +447,21 @@ function contactosDe(z){
     const num = m[1].replace(/\D/g, '').replace(/^34(?=\d{9}$)/, '');
     if (num.length === 9) add('tel', `+34 ${num.slice(0,3)} ${num.slice(3,6)} ${num.slice(6)}`, `tel:+34${num}`, contexto(m.index + m[0].length));
   }
+  // «Contacto: Ministerio de Defensa» sin correo ni teléfono: se avisa de a quién dirigirse
+  const cn = texto.match(/Contacto:\s*([^.(:@\d]{3,60}?)\s*(?:\(|\.|$|Email|Tel)/i);
+  if (cn && !/@/.test(cn[1]) && !lista.some(k => k.tipo !== 'web'))
+    lista.push({ tipo:'nota', valor: cn[1].trim(), href:'', entidad:'', para:`ENAIRE no da correo: la solicitud se hace ${/^(Ministerio|Ejército|Centro|Servicio)/.test(cn[1].trim()) ? 'al' : 'a'} ${cn[1].trim().replace(/^(Ministerio|Ejército|Centro|Servicio)/, m => m)}` });
   // entorno urbano: además del enlace informativo, el formulario donde se hace la comunicación
   if (z.c.titulo === 'Entorno urbano')
     lista.push({ tipo:'web', valor:'https://drones.ses.mir.es/drones-web/', href:'https://drones.ses.mir.es/drones-web/', entidad:'Ministerio del Interior', para:'Formulario para hacer la comunicación del vuelo (mínimo 5 días antes)' });
   return lista;
 }
-const ICONO = { email:'✉️', web:'🌐', tel:'📞' };
+const ICONO = { email:'✉️', web:'🌐', tel:'📞', nota:'🏛️' };
 function pintarContactos(lista, destino, conZona){
   const ul = document.createElement('ul'); ul.className = 'contactos';
   lista.forEach(k => {
     const li = document.createElement('li');
-    const enl = document.createElement('a'); enl.href = k.href;
+    const enl = document.createElement(k.href ? 'a' : 'b'); if (k.href) enl.href = k.href;
     enl.textContent = k.tipo !== 'web' ? k.valor
       : k.valor.replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*/, '') + (/\.pdf($|\?)/i.test(k.valor) ? ' (PDF)' : '');
     if (k.tipo === 'web'){ enl.target = '_blank'; enl.rel = 'noopener'; }
@@ -809,7 +813,7 @@ function pintarResumen(zonas, altas, h, fallos, suelo){
   const todos = [], vistos = new Set();
   // ni lo que sale siempre (entorno urbano) ni lo que es solo de consulta
   zonas.filter(z => (!z.notam || z.notam.estado !== 'no') && z.c.titulo !== 'Entorno urbano').forEach(z => z.contactos.forEach(k => {
-    if (vistos.has(k.valor) || /solo consulta/.test(k.para)) return; vistos.add(k.valor);
+    if (vistos.has(k.valor) || /seguridadaerea.gob.es/.test(k.valor)) return; vistos.add(k.valor);
     todos.push({ ...k, zona: z.c.titulo + (z.nombre ? ` (${z.nombre})` : '') });
   }));
   if (todos.length){
