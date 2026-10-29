@@ -438,7 +438,8 @@ function contactosDe(z){
   // webs: enlaces del texto de ENAIRE y direcciones escritas
   for (const el of doc.querySelectorAll('a[href]')){
     const h = el.getAttribute('href').trim();
-    if (/^https?:/i.test(h)) add('web', h, h, contexto(texto.indexOf(el.textContent.replace(/\s+/g, ' '))) + ' ' + el.textContent);
+    // en entorno urbano los enlaces de ENAIRE (información general y normativa) sobran: se deja el formulario
+    if (/^https?:/i.test(h) && z.c.titulo !== 'Entorno urbano') add('web', h, h, contexto(texto.indexOf(el.textContent.replace(/\s+/g, ' '))) + ' ' + el.textContent);
   }
   for (const m of texto.matchAll(/\b(?:https?:\/\/|www\.)[^\s<>"')]+[^\s<>"').,;]/gi)){ const h = /^www\./i.test(m[0]) ? `https://${m[0]}` : m[0]; add('web', h, h, contexto(m.index)); }
   // teléfonos: con +34 o justo detrás de «teléfono», «tel», «phone»…
@@ -806,8 +807,9 @@ function pintarResumen(zonas, altas, h, fallos, suelo){
   if (fallos) li(`Atención: ${fallos} capa(s) de ENAIRE no respondieron; el resumen puede estar incompleto.`, 'rojo');
   // todos los contactos juntos, con para qué sirve cada uno (los de NOTAM que no te afectan no hacen falta)
   const todos = [], vistos = new Set();
-  zonas.filter(z => !z.notam || z.notam.estado !== 'no').forEach(z => z.contactos.forEach(k => {
-    if (vistos.has(k.valor)) return; vistos.add(k.valor);
+  // ni lo que sale siempre (entorno urbano) ni lo que es solo de consulta
+  zonas.filter(z => (!z.notam || z.notam.estado !== 'no') && z.c.titulo !== 'Entorno urbano').forEach(z => z.contactos.forEach(k => {
+    if (vistos.has(k.valor) || /solo consulta/.test(k.para)) return; vistos.add(k.valor);
     todos.push({ ...k, zona: z.c.titulo + (z.nombre ? ` (${z.nombre})` : '') });
   }));
   if (todos.length){
