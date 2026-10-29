@@ -6,6 +6,9 @@
 <title>Permisos de Dron</title>
 <meta name="description" content="Consulta las restricciones de ENAIRE Drones en un punto y prepara los correos a las entidades.">
 <meta name="theme-color" content="#0b6fa4">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icono-192.png">
+<link rel="apple-touch-icon" href="icono-192.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root{
@@ -55,6 +58,7 @@ button:disabled{opacity:.5;cursor:default}
 .punto{font-size:.9rem;color:var(--muted);margin-top:8px;word-break:break-word}
 .aviso{padding:10px 12px;border-radius:8px;margin:8px 0;font-size:.95rem}
 .aviso.error{background:var(--rojo-bg);color:var(--rojo)}
+.aviso.info{background:var(--info-bg);color:var(--info)}
 .resumen{border-radius:10px;padding:12px 14px;font-weight:600;margin-bottom:12px}
 .resumen.rojo{background:var(--rojo-bg);color:var(--rojo)}
 .resumen.naranja{background:var(--naranja-bg);color:var(--naranja)}
@@ -87,9 +91,9 @@ details summary{cursor:pointer;font-weight:600}
 <main>
   <section class="card">
     <h2>1. Punto de vuelo</h2>
-    <label for="entrada">Coordenadas o enlace de Google Maps</label>
+    <label for="entrada">Coordenadas, dirección o lo que compartas desde Google Maps</label>
     <div class="campo">
-      <input id="entrada" placeholder="Pega aquí el punto" autocomplete="off">
+      <input id="entrada" placeholder="Coordenadas, dirección o lugar" autocomplete="off">
       <button id="btnBorrar" type="button" class="borrar" aria-label="Borrar" hidden>✕</button>
     </div>
     <div class="punto">Ej.: 38°41′58.72″ N, 0°28′29.77″ W · 38.6996, -0.4749</div>
@@ -231,12 +235,34 @@ function fijar(p, consultarYa){
 }
 
 function mensaje(t){ $('msgEntrada').innerHTML = t ? `<div class="aviso error">${t}</div>` : ''; }
-$('btnBuscar').onclick = () => {
-  if (!$('entrada').value.trim() && punto) { mensaje(''); return consultar(); }
-  const r = leerPunto($('entrada').value);
-  if (r==='corto') return mensaje('Los enlaces cortos de Maps (goo.gl) no llevan las coordenadas dentro, y los antiguos de goo.gl ya no funcionan ni en Google. Haz una de estas dos cosas:<br>• Toca el punto en el mapa de abajo.<br>• En Google Maps, mantén pulsado el punto, toca las coordenadas que salen arriba (se copian) y pulsa «Pegar».');
-  if (!r || Math.abs(r[0])>90 || Math.abs(r[1])>180) return mensaje('No entiendo esas coordenadas. Ejemplos: 38.6996, -0.4749  o  38°41′58.72″ N, 0°28′29.77″ W');
-  mensaje(''); fijar(r, true);
+// direcciones y nombres de sitios (lo que trae Google Maps al compartir un lugar)
+async function buscarDireccion(t){
+  const q = new URLSearchParams({ f:'json', maxLocations:'1', sourceCountry:'ESP', outFields:'Match_addr', SingleLine:t });
+  const r = await fetch(`https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?${q}`);
+  const c = (await r.json()).candidates?.[0];
+  return c && c.score >= 80 ? { p:[c.location.y, c.location.x], nombre:c.address } : null;
+}
+const AVISO_CORTO = 'Ese enlace corto de Maps no lleva las coordenadas dentro. Haz una de estas dos cosas:<br>• Toca el punto en el mapa de abajo.<br>• En Google Maps, mantén pulsado el punto, toca las coordenadas que salen arriba (se copian) y pulsa «Pegar».';
+function avisoInfo(t){ $('msgEntrada').innerHTML = `<div class="aviso info"></div>`; $('msgEntrada').firstChild.textContent = t; }
+
+$('btnBuscar').onclick = async () => {
+  const txt = $('entrada').value.trim();
+  if (!txt && punto) { mensaje(''); return consultar(); }
+  const r = leerPunto(txt);
+  if (Array.isArray(r)){
+    if (Math.abs(r[0])>90 || Math.abs(r[1])>180) return mensaje('Esas coordenadas no son válidas.');
+    mensaje(''); return fijar(r, true);
+  }
+  // no son coordenadas: se busca como dirección, quitando los enlaces
+  const dir = txt.replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (dir.length < 3) return mensaje(r === 'corto' ? AVISO_CORTO : 'Escribe unas coordenadas, una dirección o toca el mapa.');
+  avisoInfo('Buscando la dirección…');
+  try {
+    const g = await buscarDireccion(dir);
+    if (!g) return mensaje(`No encuentro «${dir.replace(/</g,'&lt;')}». Prueba con la dirección completa o toca el punto en el mapa.`);
+    avisoInfo(`Encontrado: ${g.nombre}. Si no es el sitio exacto, toca el punto en el mapa.`);
+    fijar(g.p, true);
+  } catch(e){ mensaje('No se pudo buscar la dirección. Revisa la conexión.'); }
 };
 $('entrada').addEventListener('keydown', e => { if (e.key==='Enter') $('btnBuscar').click(); });
 const verBorrar = () => { $('btnBorrar').hidden = !$('entrada').value; };
@@ -457,8 +483,12 @@ function abrirCorreo(z, p, h, foto){
 
 cargar();
 (function(){ const d=new Date(); d.setDate(d.getDate()+7); $('fecha').value = d.toISOString().slice(0,10); })();
-const q = new URLSearchParams(location.search).get('p');
-if (q){ const r = leerPunto(q); if (Array.isArray(r)){ $('entrada').value = q; fijar(r, true); } }
+// ?p=lat,lon o lo que llega al compartir desde otra app (Web Share Target)
+const qs = new URLSearchParams(location.search);
+const recibido = [qs.get('p'), qs.get('title'), qs.get('text'), qs.get('url')].filter(Boolean).join(' ').trim();
+if (recibido){ $('entrada').value = recibido; verBorrar(); history.replaceState(null, '', location.pathname); $('btnBuscar').click(); }
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
 </html>
