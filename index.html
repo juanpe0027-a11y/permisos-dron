@@ -71,6 +71,14 @@ button:disabled{opacity:.5;cursor:default}
 .zona .etq{display:inline-block;font-size:.75rem;font-weight:700;border-radius:999px;padding:2px 8px;margin-right:6px;vertical-align:middle}
 .etq.rojo{background:var(--rojo-bg);color:var(--rojo)}
 .etq.naranja{background:var(--naranja-bg);color:var(--naranja)}
+.zona.ok{border-left-color:var(--ok)}
+.etq.ok{background:var(--ok-bg);color:var(--ok)}
+.cuentas{border-collapse:collapse;width:100%;margin:4px 0 10px;font-size:.92rem}
+.cuentas td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.cuentas td:first-child{width:52%;color:var(--muted)}
+.cuentas td:last-child{text-align:right;font-weight:600}
+.txt .cumple{color:var(--ok)}
+.txt .pasa{color:var(--rojo)}
 .etq.info{background:var(--info-bg);color:var(--info)}
 .zona .txt{font-size:.92rem}
 .zona .txt p{margin:6px 0}
@@ -132,6 +140,7 @@ details summary{cursor:pointer;font-weight:600}
     <label for="finalidad">Finalidad del vuelo</label>
     <input id="finalidad" placeholder="Ej.: fotografía y vídeo de la zona">
     <label class="check"><input id="foto" type="checkbox" checked> Vuelo fotográfico / vídeo</label>
+    <div><label for="urbano">Entorno urbano</label><select id="urbano"><option value="auto">Automático (según el Catastro)</option><option value="si">Sí, es entorno urbano</option><option value="no">No, es campo / rústico</option></select></div>
   </section>
 
   <section class="card" id="cardRes" hidden>
@@ -178,7 +187,7 @@ const CAPAS = [
   { url:'ENP/ENP_APP_Local_V4/MapServer/1', titulo:'Zona de protección de aves (ZEPA)', nivel:'info' },
   { url:'NSF/Drones_ZG_Urbano_V0/MapServer/11', titulo:'Entorno urbano', nivel:'naranja' },
 ];
-const NOMBRE_NIVEL = { rojo:'No permitido sin coordinar', naranja:'Condiciones / trámite', info:'Informativo' };
+const NOMBRE_NIVEL = { rojo:'No permitido sin coordinar', naranja:'Condiciones / trámite', ok:'Cumples', info:'Informativo' };
 
 const $ = id => document.getElementById(id);
 let punto = null, marcador = null;
@@ -372,7 +381,7 @@ $('btnGps').onclick = () => {
     navigator.geolocation.getCurrentPosition(ok, fallo, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
   }, { enableHighAccuracy:false, timeout:8000, maximumAge:60000 });
 };
-['altura','foto','fecha','horaIni','horaFin'].forEach(k => $(k).addEventListener('change', () => { if (punto) consultar(); }));
+['altura','foto','fecha','horaIni','horaFin','urbano'].forEach(k => $(k).addEventListener('change', () => { if (punto) consultar(); }));
 
 // ---------- limpieza del HTML de ENAIRE ----------
 function limpiar(html){
@@ -384,7 +393,12 @@ function limpiar(html){
       if (n.nodeType!==1) continue;
       const tag = n.tagName.toLowerCase();
       let el;
-      if (tag==='p' || tag==='br' || tag==='ul' || tag==='li' || tag==='i' || tag==='u') el = document.createElement(tag);
+      if (/^(p|br|ul|li|i|u|table|tbody|tr|td)$/.test(tag)){
+        el = document.createElement(tag);
+        // clases propias de la app (cuadro de alturas, cumple / no cumple)
+        const cl = (n.getAttribute('class') || '').split(/\s+/).filter(x => /^(cumple|pasa|cuentas)$/.test(x));
+        if (cl.length) el.className = cl.join(' ');
+      }
       else if (tag==='b' || tag==='strong' || tag==='elem') el = document.createElement('b');
       else if (tag==='a'){
         const href = (n.getAttribute('href')||'').trim().replace(/^mailto:\s*/i,'mailto:');
@@ -412,6 +426,7 @@ function paraQue(tipo, valor, ctx, z){
   if (tipo === 'web'){
     if (/interior\.gob\.es|mir\.es/.test(valor)) return 'Información para comunicar el vuelo al Ministerio del Interior (5 días antes) si vuelas en entorno urbano';
     if (/seguridadaerea\.gob\.es/.test(valor)) return 'Normativa de AESA sobre zonas geográficas (solo consulta)';
+    if (/planea\.enaire\.es/.test(valor)) return `Pedir la coordinación para volar en ${zona} (ENAIRE Planea, con registro)`;
     if (/aip\.enaire\.es/.test(valor)) return `Más información de ENAIRE sobre ${zona}${/contenido_AIC/.test(valor) ? ': cómo hacer la solicitud' : ''}`;
     return `Página que indica ENAIRE para ${zona}`;
   }
@@ -423,7 +438,7 @@ function paraQue(tipo, valor, ctx, z){
 }
 function contactosDe(z){
   const a = z.a, lista = [], vistos = new Set();
-  const doc = new DOMParser().parseFromString(`<div>${z.html}</div>`, 'text/html');
+  const doc = new DOMParser().parseFromString(`<div>${z.html}${a.CONTACTO && !String(z.html).includes('Contacto') ? `<p>Contacto: ${a.CONTACTO}</p>` : ''}${a.PHONE ? `<p>TEL: ${a.PHONE}</p>` : ''}</div>`, 'text/html');
   const texto = doc.body.textContent.replace(/\s+/g, ' ');
   const contexto = idx => texto.slice(Math.max(0, idx - 220), idx);
   const add = (tipo, valor, href, ctx) => {
@@ -433,7 +448,10 @@ function contactosDe(z){
   };
   // correos (también los escritos «NOMBRE(AT)DOMINIO.COM» o «nombre [at] dominio.es»)
   const reMail = /([A-Z0-9._%+-]+)\s*(?:@|\(AT\)|\[AT\]|\{AT\})\s*([A-Z0-9.-]+\.[A-Z]{2,})/gi;
-  for (const m of texto.matchAll(reMail)){ const e = `${m[1]}@${m[2]}`.toLowerCase(); add('email', e, `mailto:${e}`, contexto(m.index)); }
+  for (const m of texto.matchAll(reMail)){
+    // a veces el texto sigue pegado al correo: «…@mde.esTEL: …»
+    const dom = m[2].replace(/(?<=\.[a-z]{2,3})(tel[eé]?f?o?n?o?|tlf|tfno|phone|email|contacto|operador)$/i, '');
+    const e = `${m[1]}@${dom}`.toLowerCase(); add('email', e, `mailto:${e}`, contexto(m.index)); }
   String(a.EMAIL || a.email || '').split(/[;,\s]+/).filter(e => /@/.test(e)).forEach(e => add('email', e.trim().toLowerCase(), `mailto:${e.trim()}`, texto));
   // webs: enlaces del texto de ENAIRE y direcciones escritas
   for (const el of doc.querySelectorAll('a[href]')){
@@ -449,7 +467,7 @@ function contactosDe(z){
   }
   // «Contacto: Ministerio de Defensa» sin correo ni teléfono: se avisa de a quién dirigirse
   const cn = texto.match(/Contacto:\s*([^.(:@\d]{3,60}?)\s*(?:\(|\.|$|Email|Tel)/i);
-  if (cn && !/@/.test(cn[1]) && !lista.some(k => k.tipo !== 'web'))
+  if (cn && !/@/.test(cn[1]) && !lista.some(k => k.tipo !== 'web' || /planea/i.test(k.valor)))
     lista.push({ tipo:'nota', valor: cn[1].trim(), href:'', entidad:'', para:`ENAIRE no da correo: la solicitud se hace ${/^(Ministerio|Ejército|Centro|Servicio)/.test(cn[1].trim()) ? 'al' : 'a'} ${cn[1].trim().replace(/^(Ministerio|Ejército|Centro|Servicio)/, m => m)}` });
   // entorno urbano: además del enlace informativo, el formulario donde se hace la comunicación
   if (z.c.titulo === 'Entorno urbano')
@@ -480,11 +498,16 @@ async function consultarCapa(c, p, h){
     spatialRel:'esriSpatialRelIntersects', outFields:'*', returnGeometry:'false',
     where: c.where ? c.where(h) : '1=1'
   });
-  const r = await fetch(`${SVC}${c.url}/query?${q}`);
-  if (!r.ok) throw new Error(r.status);
-  const d = await r.json();
-  if (d.error) throw new Error(d.error.message);
-  return d.features.map(f => f.attributes);
+  // ENAIRE a veces no responde a la primera: hasta 3 intentos
+  for (let i = 0; ; i++){
+    try {
+      const r = await fetch(`${SVC}${c.url}/query?${q}`);
+      if (!r.ok) throw new Error(r.status);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error.message);
+      return d.features.map(f => f.attributes);
+    } catch(e){ if (i >= 2) throw e; await new Promise(r => setTimeout(r, 800 * (i + 1))); }
+  }
 }
 
 // ---------- NOTAM: alturas, fechas y horario frente al vuelo previsto ----------
@@ -619,6 +642,85 @@ function analizarNotam(a, h, suelo){
   return { estado, frase, alturas };
 }
 
+// Altura máxima sin coordinar que pone ENAIRE en el texto de la zona:
+//  · CTR: «altura máxima de 60m sobre el suelo»
+//  · aeródromo: «Por debajo de 45m medidos desde el punto de referencia del aeródromo (185m)» o
+//    «entre el suelo y una altitud de 45m sobre el ARP del aeródromo (148m) … o por encima de 60m desde el suelo»
+//    (el ARP es la altitud del aeródromo sobre el mar: el techo es ARP + 45 m, y se compara con terreno + tu altura)
+function limiteAltura(texto, h, suelo){
+  const t = texto.replace(/\s+/g, ' ');
+  const lim = [];
+  let m = t.match(/altura m[aá]xima de (\d+) ?m(?:etros)? sobre el suelo/i);
+  if (m) lim.push({ sobreSuelo: +m[1], txt: `máximo ${m[1]} m sobre el suelo` });
+  m = t.match(/(?:por debajo de|entre el suelo y una altitud de) (\d+) ?m,? (?:medidos desde el punto de referencia|sobre el ARP) del (?:aer[oó]dromo|helipuerto)[^(]{0,20}\((\d+) ?m\)/i);
+  if (m) lim.push({ arp: +m[2], sobreArp: +m[1], txt: `${m[1]} m sobre el aeródromo, que está a ${m[2]} m sobre el mar` });
+  m = t.match(/por encima de (\d+) ?m desde el suelo/i);
+  if (m && !lim.some(l => l.sobreSuelo)) lim.push({ sobreSuelo: +m[1], txt: `máximo ${m[1]} m sobre el suelo` });
+  if (!lim.length) return null;
+  let cumple = true, maxAqui = Infinity;
+  for (const l of lim){
+    if (l.sobreSuelo) maxAqui = Math.min(maxAqui, l.sobreSuelo);
+    if (l.arp){
+      if (typeof suelo !== 'number'){ cumple = null; continue; }
+      maxAqui = Math.min(maxAqui, l.arp + l.sobreArp - suelo);
+    }
+  }
+  if (cumple !== null) cumple = h <= maxAqui;
+  const max = Math.max(0, Math.floor(maxAqui));
+  // cuadro con las cuentas: terreno, aeródromo, techo y lo que puedes subir aquí
+  const filas = [];
+  if (typeof suelo === 'number') filas.push(['Terreno aquí', `${Math.round(suelo)} m sobre el mar`]);
+  for (const l of lim){
+    if (l.arp){
+      filas.push(['Aeródromo (ARP)', `${l.arp} m sobre el mar`]);
+      filas.push(['Techo sin coordinar', `${l.arp} + ${l.sobreArp} = ${l.arp + l.sobreArp} m sobre el mar`]);
+      if (typeof suelo === 'number') filas.push(['Ese techo aquí', `${Math.round(l.arp + l.sobreArp - suelo)} m sobre el suelo`]);
+    }
+    if (l.sobreSuelo) filas.push(['Límite desde el suelo', `${l.sobreSuelo} m`]);
+  }
+  if (cumple !== null) filas.push(['Máximo sin coordinar', `${max} m sobre el suelo`]);
+  filas.push(['Tu vuelo', `${h} m sobre el suelo`]);
+  const frase = cumple === null ? `⚠️ No se pudo medir la altitud del terreno: revisa tú el límite.`
+    : cumple ? `✅ CUMPLES: vuelas a ${h} m y aquí puedes subir hasta ${max} m sin coordinar.`
+    : max === 0 ? `⛔ NO CUMPLES: aquí el terreno ya supera el techo; cualquier vuelo necesita coordinación.`
+    : `⛔ NO CUMPLES: vuelas a ${h} m y aquí solo puedes subir hasta ${max} m sin coordinar. Baja a ${max} m o pide coordinación.`;
+  const detalle = `<p class="${cumple ? 'cumple' : 'pasa'}"><b>${frase}</b></p><table class="cuentas">${filas.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>`;
+  return { cumple, frase, detalle, maxAqui };
+}
+
+// La tarjeta de entorno urbano dice si el punto lo es y, si lo es, pide la comunicación al Ministerio
+function marcarUrbano(z, u){
+  z.urbano = u ? u.urbano : null;
+  const cab = !u ? '<p class="pasa"><b>⚠️ No se pudo consultar el Catastro: mira tú si el sitio es entorno urbano (y márcalo arriba).</b></p>'
+    : u.urbano ? `<p class="pasa"><b>🏘️ SÍ es entorno urbano (${u.motivo}). Comunica el vuelo al Ministerio del Interior con 5 días de antelación.</b></p>`
+    : `<p class="cumple"><b>✅ NO es entorno urbano (${u.motivo}). No hace falta comunicarlo al Ministerio del Interior.</b></p>`;
+  z.html = cab + z.html;
+  z.nivel = z.urbano === false ? 'ok' : 'naranja';
+  z.fraseUrbano = !u ? 'No se pudo saber si es entorno urbano: revísalo.' : u.urbano
+    ? `SÍ es entorno urbano (${u.motivo}): comunica el vuelo al Ministerio del Interior con 5 días de antelación.`
+    : `NO es entorno urbano (${u.motivo}): no hace falta comunicarlo.`;
+}
+
+// ---------- entorno urbano: se mira en el Catastro si la parcela es urbana o rústica ----------
+// Referencia catastral urbana: 7 cifras de manzana; rústica: código de municipio + letra de polígono (46010A0…).
+const CATASTRO = 'https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCoordenadas.asmx';
+async function esUrbano(p){
+  const q = `SRS=EPSG:4326&Coordenada_X=${p[1]}&Coordenada_Y=${p[0]}`;
+  const tipo = pc1 => /^\d{7}$/.test(pc1) ? 'urbana' : 'rústica';
+  let t = await (await fetch(`${CATASTRO}/Consulta_RCCOOR?${q}`)).text();
+  let m = t.match(/<pc1>([^<]*)<\/pc1>[\s\S]*?<ldt>([^<]*)/);
+  if (m) return { urbano: tipo(m[1]) === 'urbana', motivo: `parcela ${tipo(m[1])} del Catastro: ${m[2]}` };
+  // en calles, plazas, parques o playas no hay parcela: se mira la más cercana
+  t = await (await fetch(`${CATASTRO}/Consulta_RCCOOR_Distancia?${q}`)).text();
+  m = t.match(/<pc1>([^<]*)<\/pc1>[\s\S]*?<dis>([^<]*)/);
+  if (m) return { urbano: tipo(m[1]) === 'urbana', motivo: `parcela ${tipo(m[1])} más cercana del Catastro, a ${Math.round(+m[2])} m` };
+  // sin parcelas cerca: se cuentan los edificios del Catastro en unos 100 m alrededor
+  const d = 0.0009, e = d / Math.cos(p[0] * Math.PI / 180);
+  t = await (await fetch(`https://ovc.catastro.meh.es/INSPIRE/wfsBU.aspx?service=WFS&version=2.0.0&request=GetFeature&typeNames=BU:Building&count=50&srsName=EPSG::4326&bbox=${p[0]-d},${p[1]-e},${p[0]+d},${p[1]+e},urn:ogc:def:crs:EPSG::4326`)).text();
+  const n = new Set(t.match(/ES\.SDGC\.BU\.[\w]+/g) || []).size;
+  return { urbano: n >= 3, motivo: `${n} edificio(s) del Catastro a menos de 100 m` };
+}
+
 function construirZona(c, a, h, suelo){
   let html, nombre, notam = null;
   if (c.notam){
@@ -637,7 +739,13 @@ function construirZona(c, a, h, suelo){
   if (notam) nivel = { afecta:'rojo', quiza:'naranja', no:'info' }[notam.estado];
   else if (nivel==='auto') nivel = /no\s+permitido|prohibid[oa]\s+el\s+vuelo|NO permitted/i.test(textoPlano) ? 'rojo' : 'naranja';
   if (c.titulo==='Entorno urbano') nombre = '';
-  const z = { c, a, html, nombre, nivel, notam };
+  const altura = notam ? null : limiteAltura(textoPlano, h, suelo);
+  if (altura){
+    html = altura.detalle + html;
+    if (altura.cumple) nivel = 'ok';
+    else if (altura.cumple === false) nivel = 'rojo';
+  }
+  const z = { c, a, html, nombre, nivel, notam, altura };
   z.contactos = contactosDe(z);
   z.correos = z.contactos.filter(k => k.tipo === 'email').map(k => k.valor);
   return { ...z, clave: c.url + '|' + (a.notamId || textoPlano.slice(0,300)) };
@@ -646,7 +754,8 @@ function construirZona(c, a, h, suelo){
 // Frase clave de una zona para el resumen: lo que ENAIRE marca en rojo o en negrita
 function fraseClave(z){
   if (z.notam) return z.notam.frase;
-  if (z.c.titulo === 'Entorno urbano') return 'Si vuelas en zona urbana, comunica el vuelo al Ministerio del Interior con 5 días de antelación.';
+  if (z.altura) return z.altura.frase;
+  if (z.c.titulo === 'Entorno urbano') return z.fraseUrbano || 'Si vuelas en zona urbana, comunica el vuelo al Ministerio del Interior con 5 días de antelación.';
   if (/^(ENP|ZEPA)/.test(z.c.url.split('/')[0]) || /natural|aves/i.test(z.c.titulo)) return 'Solo informativo: no molestes a la fauna.';
   const doc = new DOMParser().parseFromString(`<div>${z.html}</div>`, 'text/html');
   const limpio = t => t.replace(/\s+/g, ' ').trim();
@@ -702,20 +811,25 @@ async function consultar(){
   const capas = CAPAS.filter(c => foto || !c.soloFoto);
   const pSuelo = fetch(`https://api.open-meteo.com/v1/elevation?latitude=${p[0]}&longitude=${p[1]}`)
     .then(r => r.json()).then(d => typeof d.elevation?.[0] === 'number' ? d.elevation[0] : null).catch(() => null);
+  const pUrbano = $('urbano').value !== 'auto'
+    ? Promise.resolve({ urbano: $('urbano').value === 'si', motivo: 'lo has marcado tú' })
+    : esUrbano(p).catch(() => null);
   const res = await Promise.allSettled(capas.map(c => consultarCapa(c, p, h)));
   const suelo = await pSuelo;
+  const urbano = await pUrbano;
   if (n !== consultaN) return;
   const zonas = [], altas = [], vistas = new Set(); let fallos = 0;
   res.forEach((r, i) => {
     if (r.status !== 'fulfilled'){ fallos++; return; }
     r.value.forEach(a => {
       const z = construirZona(capas[i], a, h, suelo);
+      if (z.c.titulo === 'Entorno urbano') marcarUrbano(z, urbano);
       if (vistas.has(z.clave)) return;
       vistas.add(z.clave);
       (porEncima(a, h, suelo) ? altas : zonas).push(z);
     });
   });
-  const orden = { rojo:0, naranja:1, info:2 };
+  const orden = { rojo:0, naranja:1, ok:2, info:3 };
   zonas.sort((x,y) => orden[x.nivel]-orden[y.nivel]);
   pintar(zonas, fallos, p, h, foto, altas, suelo);
   $('txtPunto').textContent = textoPunto(p);
@@ -724,7 +838,7 @@ async function consultar(){
 function pintar(zonas, fallos, p, h, foto, altas, suelo){
   const R = $('resultado'); R.innerHTML = '';
   const hayRojo = zonas.some(z => z.nivel==='rojo');
-  const hayNar = zonas.some(z => z.nivel==='naranja' && z.c.titulo!=='Entorno urbano');
+  const hayNar = zonas.some(z => z.nivel==='naranja' && (z.c.titulo!=='Entorno urbano' || z.urbano));
   const res = document.createElement('div');
   if (hayRojo){ res.className='resumen rojo'; res.textContent='Hay zonas donde no se permite volar sin coordinación o autorización previa.'; }
   else if (hayNar){ res.className='resumen naranja'; res.textContent='Se puede volar cumpliendo condiciones o haciendo algún trámite. Revisa cada zona.'; }
@@ -783,7 +897,7 @@ function pintarResumen(zonas, altas, h, fallos, suelo){
   const notamAfecta = notams.filter(z => z.notam.estado === 'afecta');
   const notamDuda = notams.filter(z => z.notam.estado === 'quiza');
   const rojo = zonas.some(z => z.nivel === 'rojo');
-  const naranja = zonas.some(z => z.nivel === 'naranja' && z.c.titulo !== 'Entorno urbano');
+  const naranja = zonas.some(z => z.nivel === 'naranja' && (z.c.titulo !== 'Entorno urbano' || z.urbano));
 
   const s = document.createElement('div'); s.className = 'card resumen-final';
   const veredicto = rojo
@@ -812,7 +926,7 @@ function pintarResumen(zonas, altas, h, fallos, suelo){
   // todos los contactos juntos, con para qué sirve cada uno (los de NOTAM que no te afectan no hacen falta)
   const todos = [], vistos = new Set();
   // ni lo que sale siempre (entorno urbano) ni lo que es solo de consulta
-  zonas.filter(z => (!z.notam || z.notam.estado !== 'no') && z.c.titulo !== 'Entorno urbano').forEach(z => z.contactos.forEach(k => {
+  zonas.filter(z => (!z.notam || z.notam.estado !== 'no') && z.nivel !== 'ok' && (z.c.titulo !== 'Entorno urbano' || z.urbano)).forEach(z => z.contactos.forEach(k => {
     if (vistos.has(k.valor) || /seguridadaerea.gob.es/.test(k.valor)) return; vistos.add(k.valor);
     todos.push({ ...k, zona: z.c.titulo + (z.nombre ? ` (${z.nombre})` : '') });
   }));
