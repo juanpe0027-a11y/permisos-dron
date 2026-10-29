@@ -418,7 +418,14 @@ async function resolverEnlace(t){
   if (d.error === 'caducado') return { caducado:true };
   const lugar = decodeURIComponent(((d.url || '').match(/\/place\/([^/@?]+)/) || (d.url || '').match(/[?&]q=([^&]+)/) || [])[1] || '').replace(/\+/g, ' ');
   const exacto = /!3d-?\d/.test(d.url || '');
-  if (typeof d.lat === 'number'){
+  // las coordenadas solo valen si vienen en la dirección larga; si salen de la página de Google
+  // pueden ser las de su vista por defecto (el centro de EE. UU.)
+  const enUrl = exacto || /@-?\d+\.\d+,-?\d+\.\d+/.test(d.url || '') || /[?&](?:q|ll|query|center)=-?\d+\.\d+(?:,|%2C)/i.test(d.url || '');
+  if (!enUrl && lugar){
+    const g = await buscarDireccion(lugar);
+    if (g) return { p:g.p, nombre:lugar };
+  }
+  if (typeof d.lat === 'number' && enUrl){
     // con «@» solo viene el centro de la vista: si hay nombre de sitio, se busca cerca para clavar el punto
     if (lugar && !exacto){
       const g = await buscarDireccion(lugar, [d.lat, d.lng]).catch(() => null);
