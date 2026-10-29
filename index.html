@@ -29,6 +29,7 @@
   --info:#90caf9; --info-bg:#172b40; --ok:#81c784; --ok-bg:#1b3320;
 }
 *{box-sizing:border-box}
+[hidden]{display:none !important}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 header{background:var(--accent);color:var(--accent-text);padding:14px 16px}
 header h1{margin:0;font-size:1.25rem}
@@ -214,7 +215,11 @@ const orto = L.layerGroup([
 const calles = L.tileLayer(ESRI + 'World_Street_Map/MapServer/tile/{z}/{y}/{x}',
   { maxZoom:20, maxNativeZoom:19, attribution:'© Esri, HERE, OpenStreetMap' });
 L.control.layers({ 'Ortofoto':orto, 'Calles':calles }, null, { collapsed:false }).addTo(mapa);
-mapa.on('click', e => fijar([e.latlng.lat, e.latlng.lng], true));
+mapa.on('click', e => {
+  const p = [e.latlng.lat, e.latlng.lng];
+  $('entrada').value = `${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
+  mensaje(''); fijar(p, true);
+});
 
 function fijar(p, consultarYa){
   punto = p;
@@ -227,6 +232,7 @@ function fijar(p, consultarYa){
 
 function mensaje(t){ $('msgEntrada').innerHTML = t ? `<div class="aviso error">${t}</div>` : ''; }
 $('btnBuscar').onclick = () => {
+  if (!$('entrada').value.trim() && punto) { mensaje(''); return consultar(); }
   const r = leerPunto($('entrada').value);
   if (r==='corto') return mensaje('Los enlaces cortos de Maps no se pueden leer. En Maps mantén pulsado el punto, copia las coordenadas que salen arriba y pégalas aquí.');
   if (!r || Math.abs(r[0])>90 || Math.abs(r[1])>180) return mensaje('No entiendo esas coordenadas. Ejemplos: 38.6996, -0.4749  o  38°41′58.72″ N, 0°28′29.77″ W');
@@ -341,6 +347,8 @@ async function consultar(){
   const foto = $('foto').checked;
   $('cardRes').hidden = false;
   $('resultado').innerHTML = '<p class="cargando">Consultando ENAIRE…</p>';
+  $('txtPunto').textContent = `${textoPunto(p)} · consultando…`;
+  $('cardRes').scrollIntoView({ behavior:'smooth', block:'start' });
   const capas = CAPAS.filter(c => foto || !c.soloFoto);
   const res = await Promise.allSettled(capas.map(c => consultarCapa(c, p, h)));
   if (n !== consultaN) return;
@@ -357,6 +365,7 @@ async function consultar(){
   const orden = { rojo:0, naranja:1, info:2 };
   zonas.sort((x,y) => orden[x.nivel]-orden[y.nivel]);
   pintar(zonas, fallos, p, h, foto, altas);
+  $('txtPunto').textContent = textoPunto(p);
 }
 
 function pintar(zonas, fallos, p, h, foto, altas){
