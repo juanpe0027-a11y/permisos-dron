@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Permisos de Dron</title>
+<meta name="description" content="Consulta las restricciones de ENAIRE Drones en un punto y prepara los correos a las entidades.">
+<meta name="theme-color" content="#0b6fa4">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#f4f6f8; --card:#ffffff; --text:#1b2530; --muted:#5d6b78; --line:#d9e0e6;
+  --accent:#0b6fa4; --accent-text:#ffffff;
+  --rojo:#c62828; --rojo-bg:#fdecec; --naranja:#b25e00; --naranja-bg:#fff3e0;
+  --info:#1565c0; --info-bg:#e8f1fc; --ok:#2e7d32; --ok-bg:#e8f5e9;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11161b; --card:#1a2128; --text:#e6edf3; --muted:#9aa8b5; --line:#2c3640;
+    --accent:#3ea6e0; --accent-text:#0b1620;
+    --rojo:#ff8a80; --rojo-bg:#3a1d1d; --naranja:#ffb74d; --naranja-bg:#3a2a14;
+    --info:#90caf9; --info-bg:#172b40; --ok:#81c784; --ok-bg:#1b3320;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11161b; --card:#1a2128; --text:#e6edf3; --muted:#9aa8b5; --line:#2c3640;
+  --accent:#3ea6e0; --accent-text:#0b1620;
+  --rojo:#ff8a80; --rojo-bg:#3a1d1d; --naranja:#ffb74d; --naranja-bg:#3a2a14;
+  --info:#90caf9; --info-bg:#172b40; --ok:#81c784; --ok-bg:#1b3320;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--accent);color:var(--accent-text);padding:14px 16px}
+header h1{margin:0;font-size:1.25rem}
+header p{margin:2px 0 0;font-size:.85rem;opacity:.9}
+main{max-width:760px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.card h2{font-size:1.05rem;margin:0 0 10px}
+label{display:block;font-size:.85rem;color:var(--muted);margin:8px 0 4px}
+input,select,textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px}
+textarea{min-height:60px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>*{flex:1 1 140px}
+button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-weight:600;border:0;border-radius:8px;padding:10px 14px;cursor:pointer;text-decoration:none;background:var(--accent);color:var(--accent-text)}
+button.sec,.btn.sec{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+.acciones{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.check{display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--text);font-size:.95rem}
+.check input{width:auto}
+#mapa{height:260px;border-radius:10px;margin-top:10px;border:1px solid var(--line)}
+.punto{font-size:.9rem;color:var(--muted);margin-top:8px;word-break:break-word}
+.aviso{padding:10px 12px;border-radius:8px;margin:8px 0;font-size:.95rem}
+.aviso.error{background:var(--rojo-bg);color:var(--rojo)}
+.resumen{border-radius:10px;padding:12px 14px;font-weight:600;margin-bottom:12px}
+.resumen.rojo{background:var(--rojo-bg);color:var(--rojo)}
+.resumen.naranja{background:var(--naranja-bg);color:var(--naranja)}
+.resumen.ok{background:var(--ok-bg);color:var(--ok)}
+.zona{border-left:5px solid var(--line);background:var(--card);border-radius:8px;padding:10px 12px;margin:10px 0;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.zona.rojo{border-left-color:var(--rojo)}
+.zona.naranja{border-left-color:var(--naranja)}
+.zona.info{border-left-color:var(--info)}
+.zona .tit{font-weight:700;margin-bottom:4px}
+.zona .etq{display:inline-block;font-size:.75rem;font-weight:700;border-radius:999px;padding:2px 8px;margin-right:6px;vertical-align:middle}
+.etq.rojo{background:var(--rojo-bg);color:var(--rojo)}
+.etq.naranja{background:var(--naranja-bg);color:var(--naranja)}
+.etq.info{background:var(--info-bg);color:var(--info)}
+.zona .txt{font-size:.92rem}
+.zona .txt p{margin:6px 0}
+.zona .txt a{color:var(--accent)}
+.zona .txt .rojo{color:var(--rojo);font-weight:600}
+.correos{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.correos .em{font-size:.85rem;color:var(--muted);margin-bottom:6px;word-break:break-all}
+details summary{cursor:pointer;font-weight:600}
+.pie{font-size:.8rem;color:var(--muted);text-align:center;padding:10px 16px 30px}
+.cargando{color:var(--muted);font-style:italic}
+</style>
+</head>
+<body>
+<header>
+  <h1>Permisos de Dron</h1>
+  <p>Restricciones de ENAIRE Drones en un punto</p>
+</header>
+<main>
+  <section class="card">
+    <h2>1. Punto de vuelo</h2>
+    <label for="entrada">Coordenadas o enlace de Google Maps</label>
+    <input id="entrada" placeholder="38°41′58.72″ N, 0°28′29.77″ W  ·  38.6996, -0.4749  ·  enlace de Maps" autocomplete="off">
+    <div class="acciones">
+      <button id="btnBuscar">Consultar</button>
+      <button id="btnGps" class="sec">Mi ubicación</button>
+    </div>
+    <div id="msgEntrada"></div>
+    <div id="mapa"></div>
+    <div class="punto" id="txtPunto">También puedes tocar el mapa para elegir el punto.</div>
+  </section>
+
+  <section class="card">
+    <h2>2. Vuelo</h2>
+    <div class="row">
+      <div><label for="altura">Altura máxima sobre el suelo (m)</label><input id="altura" type="number" min="1" max="120" value="120"></div>
+      <div><label for="fecha">Fecha</label><input id="fecha" type="date"></div>
+    </div>
+    <div class="row">
+      <div><label for="horaIni">Hora inicio</label><input id="horaIni" type="time" value="10:00"></div>
+      <div><label for="horaFin">Hora fin</label><input id="horaFin" type="time" value="12:00"></div>
+    </div>
+    <label for="finalidad">Finalidad del vuelo</label>
+    <input id="finalidad" placeholder="Ej.: fotografía y vídeo de la zona">
+    <label class="check"><input id="foto" type="checkbox" checked> Vuelo fotográfico / vídeo</label>
+  </section>
+
+  <section class="card" id="cardRes" hidden>
+    <h2>3. Qué dice ENAIRE</h2>
+    <div id="resultado"></div>
+    <div class="acciones"><a class="btn sec" href="https://drones.enaire.es/" target="_blank" rel="noopener">Abrir ENAIRE Drones</a></div>
+  </section>
+
+  <section class="card">
+    <details id="detDatos">
+      <summary>Mis datos para los correos</summary>
+      <p class="punto">Se guardan solo en este móvil.</p>
+      <div class="row">
+        <div><label for="dNombre">Nombre y apellidos</label><input id="dNombre"></div>
+        <div><label for="dTel">Teléfono</label><input id="dTel" type="tel"></div>
+      </div>
+      <div class="row">
+        <div><label for="dOperador">Nº de operador UAS</label><input id="dOperador" placeholder="ESP…"></div>
+        <div><label for="dDron">Dron (modelo y clase)</label><input id="dDron" placeholder="Ej.: DJI Mini 4 Pro, C0"></div>
+      </div>
+      <div class="row">
+        <div><label for="dCategoria">Categoría</label>
+          <select id="dCategoria"><option>Abierta A1</option><option>Abierta A2</option><option>Abierta A3</option><option>Específica</option></select></div>
+      </div>
+    </details>
+  </section>
+</main>
+<p class="pie">Datos consultados en directo a los servicios públicos de ENAIRE. Es una ayuda para planificar: la referencia oficial es <a href="https://drones.enaire.es/" target="_blank" rel="noopener">drones.enaire.es</a> y la normativa vigente.</p>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const SVC = 'https://servais.enaire.es/insignias/rest/services/';
+const CAPAS = [
+  { url:'NOTAM/NOTAM_UAS_APP_V3/MapServer/1', titulo:'NOTAM', nivel:'auto', notam:true,
+    where:h => `LOWER_VAL_AGL is null or LOWER_VAL_AGL < ${h}` },
+  { url:'NSF/Drones_ZG_Aero_V3/MapServer/10', titulo:'Zona restringida', nivel:'auto' },
+  { url:'NSF/Drones_ZG_Aero_V3/MapServer/6', titulo:'Zona de aeródromo', nivel:'auto' },
+  { url:'NSF/Drones_ZG_Aero_V3/MapServer/1', titulo:'Espacio aéreo controlado', nivel:'naranja' },
+  { url:'NSF/Drones_ZG_Aero_V3/MapServer/3', titulo:'Restringido al vuelo fotográfico', nivel:'naranja', soloFoto:true },
+  { url:'NSF/Drones_ZG_Infra_V0/MapServer/11', titulo:'Infraestructura protegida', nivel:'naranja',
+    where:h => `RESTRICCION_LOWER < ${h}` },
+  { url:'NSF/Drones_ZG_Aero_V3/MapServer/2', titulo:'Aviso', nivel:'info' },
+  { url:'ENP/ENP_APP_Local_V4/MapServer/0', titulo:'Espacio natural protegido', nivel:'info' },
+  { url:'ENP/ENP_APP_Local_V4/MapServer/1', titulo:'Zona de protección de aves (ZEPA)', nivel:'info' },
+  { url:'NSF/Drones_ZG_Urbano_V0/MapServer/11', titulo:'Entorno urbano', nivel:'naranja' },
+];
+const NOMBRE_NIVEL = { rojo:'No permitido sin coordinar', naranja:'Condiciones / trámite', info:'Informativo' };
+
+const $ = id => document.getElementById(id);
+let punto = null, marcador = null;
+
+// ---------- almacenamiento local (solo comodidad) ----------
+const DATOS = ['dNombre','dTel','dOperador','dDron','dCategoria','finalidad','altura'];
+function guardar(){ try{ const o={}; DATOS.forEach(k=>o[k]=$(k).value); localStorage.setItem('permisos-dron',JSON.stringify(o)); }catch(e){} }
+function cargar(){ try{ const o=JSON.parse(localStorage.getItem('permisos-dron')||'{}'); DATOS.forEach(k=>{ if(o[k]) $(k).value=o[k]; }); if(!o.dNombre) $('detDatos').open=true; }catch(e){} }
+DATOS.forEach(k=>$(k).addEventListener('change',guardar));
+
+// ---------- coordenadas ----------
+function dmsANum(g,m,s,h){ let v=+g + (+m||0)/60 + (+String(s||0).replace(',','.'))/3600; return /[SWO]/i.test(h)? -v : v; }
+function leerPunto(t){
+  t = t.trim();
+  let m;
+  if ((m = t.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/))) return [+m[1], +m[2]];
+  if ((m = t.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/))) return [+m[1], +m[2]];
+  if ((m = t.match(/[?&](?:q|ll|query|center|destination)=(-?\d+\.\d+)(?:,|%2C)\s*\+?(-?\d+\.\d+)/i))) return [+m[1], +m[2]];
+  if (/goo\.gl|share\.google|maps\.app/i.test(t)) return 'corto';
+  const re = /(\d{1,3})\s*[°º:\s]\s*(\d{1,2})\s*['′’:\s]\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:["″”]|'')?\s*([NSEWO])/gi;
+  const dms = [...t.matchAll(re)];
+  if (dms.length >= 2){
+    let lat, lon;
+    for (const d of dms){ const v = dmsANum(d[1],d[2],d[3],d[4]); if (/[NS]/i.test(d[4])) lat=v; else lon=v; }
+    if (lat!=null && lon!=null) return [lat, lon];
+  }
+  const nums = t.replace(/,(?=\d{3,})/g,'.').match(/-?\d+(?:\.\d+)?/g);
+  if (nums && nums.length===2) return [+nums[0], +nums[1]];
+  return null;
+}
+function aDms(v, pos, neg){
+  const h = v<0?neg:pos; v=Math.abs(v);
+  const g=Math.floor(v), mf=(v-g)*60, m=Math.floor(mf), s=((mf-m)*60).toFixed(2);
+  return `${g}°${String(m).padStart(2,'0')}′${s.padStart(5,'0')}″ ${h}`;
+}
+const textoPunto = p => `${aDms(p[0],'N','S')}, ${aDms(p[1],'E','W')}  (${p[0].toFixed(6)}, ${p[1].toFixed(6)})`;
+const enlaceMaps = p => `https://www.google.com/maps?q=${p[0].toFixed(6)},${p[1].toFixed(6)}`;
+
+// ---------- mapa ----------
+const mapa = L.map('mapa').setView([40.2, -3.7], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(mapa);
+mapa.on('click', e => fijar([e.latlng.lat, e.latlng.lng], true));
+
+function fijar(p, consultarYa){
+  punto = p;
+  if (marcador) marcador.setLatLng(p); else marcador = L.marker(p).addTo(mapa);
+  mapa.setView(p, Math.max(mapa.getZoom(), 14));
+  $('txtPunto').textContent = textoPunto(p);
+  if (consultarYa) consultar();
+}
+
+function mensaje(t){ $('msgEntrada').innerHTML = t ? `<div class="aviso error">${t}</div>` : ''; }
+$('btnBuscar').onclick = () => {
+  const r = leerPunto($('entrada').value);
+  if (r==='corto') return mensaje('Los enlaces cortos de Maps no se pueden leer. En Maps mantén pulsado el punto, copia las coordenadas que salen arriba y pégalas aquí.');
+  if (!r || Math.abs(r[0])>90 || Math.abs(r[1])>180) return mensaje('No entiendo esas coordenadas. Ejemplos: 38.6996, -0.4749  o  38°41′58.72″ N, 0°28′29.77″ W');
+  mensaje(''); fijar(r, true);
+};
+$('entrada').addEventListener('keydown', e => { if (e.key==='Enter') $('btnBuscar').click(); });
+$('btnGps').onclick = () => {
+  if (!navigator.geolocation) return mensaje('Este navegador no da la ubicación.');
+  navigator.geolocation.getCurrentPosition(
+    pos => { mensaje(''); fijar([pos.coords.latitude, pos.coords.longitude], true); },
+    () => mensaje('No se pudo obtener la ubicación. Revisa el permiso de ubicación del navegador.'),
+    { enableHighAccuracy:true, timeout:15000 });
+};
+['altura','foto'].forEach(k => $(k).addEventListener('change', () => { if (punto) consultar(); }));
+
+// ---------- limpieza del HTML de ENAIRE ----------
+function limpiar(html){
+  const doc = new DOMParser().parseFromString(`<div>${html||''}</div>`, 'text/html');
+  const sal = document.createElement('div');
+  (function copia(origen, destino){
+    for (const n of origen.childNodes){
+      if (n.nodeType===3){ destino.appendChild(document.createTextNode(n.textContent)); continue; }
+      if (n.nodeType!==1) continue;
+      const tag = n.tagName.toLowerCase();
+      let el;
+      if (tag==='p' || tag==='br' || tag==='ul' || tag==='li' || tag==='i' || tag==='u') el = document.createElement(tag);
+      else if (tag==='b' || tag==='strong' || tag==='elem') el = document.createElement('b');
+      else if (tag==='a'){
+        const href = (n.getAttribute('href')||'').trim().replace(/^mailto:\s*/i,'mailto:');
+        if (/^(https?:|mailto:)/i.test(href)){ el = document.createElement('a'); el.href = href; el.target='_blank'; el.rel='noopener'; }
+        else el = document.createElement('span');
+      }
+      else if (tag==='font'){ el = document.createElement('span'); if (/dc143c|red/i.test(n.getAttribute('color')||'')) el.className='rojo'; }
+      else el = document.createElement('span');
+      copia(n, el); destino.appendChild(el);
+    }
+  })(doc.body.firstChild, sal);
+  return sal;
+}
+function correosDe(attrs, texto){
+  const set = new Set();
+  String(attrs.EMAIL||'').split(/[;,\s]+/).forEach(e => { if (/@/.test(e)) set.add(e.trim().toLowerCase()); });
+  (texto.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []).forEach(e => set.add(e.toLowerCase()));
+  return [...set];
+}
+
+// ---------- consulta ----------
+async function consultarCapa(c, p, h){
+  const q = new URLSearchParams({
+    f:'json', geometry:`${p[1]},${p[0]}`, geometryType:'esriGeometryPoint', inSR:'4326',
+    spatialRel:'esriSpatialRelIntersects', outFields:'*', returnGeometry:'false',
+    where: c.where ? c.where(h) : '1=1'
+  });
+  const r = await fetch(`${SVC}${c.url}/query?${q}`);
+  if (!r.ok) throw new Error(r.status);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
+  return d.features.map(f => f.attributes);
+}
+
+function construirZona(c, a){
+  let html, nombre;
+  if (c.notam){
+    nombre = `NOTAM ${a.notamId||''}`.trim();
+    html = `<p><b>${a.areaSactaName||a.incidenceType||''}</b></p>`
+      + `<p>Vigencia: ${a.itemBstr||'?'} → ${a.itemCstr||'?'} (UTC)${a.itemD?` · Horario: ${a.itemD}`:''}</p>`
+      + `<p>Alturas: ${a.FLYING_LEVELS_DESC || `${a.itemF||''} / ${a.itemG||''}`}</p>`
+      + `<p>${(a.DESCRIPTION || a.itemE || '').replace(/</g,'&lt;')}</p>`;
+  } else {
+    html = a.REMARKS_TXT || a.REMARKS_TXT_ART || a.DESCRIPTION || '';
+    nombre = a.NAME_TXT || a.IDENT_TXT || a.NOMBRE_50 || a.SITE_NAME || a.NOMBRE || '';
+  }
+  const textoPlano = html.replace(/<[^>]+>/g,' ');
+  let nivel = c.nivel;
+  if (nivel==='auto') nivel = /no\s+permitido|prohibid[oa]\s+el\s+vuelo|NO permitted/i.test(textoPlano) ? 'rojo' : 'naranja';
+  if (c.titulo==='Entorno urbano') nombre = '';
+  return { c, a, html, nombre, nivel, correos: correosDe(a, html), clave: c.url + '|' + textoPlano.slice(0,300) };
+}
+
+let consultaN = 0;
+async function consultar(){
+  if (!punto) return;
+  const n = ++consultaN, p = punto;
+  const h = Math.min(120, Math.max(1, +$('altura').value || 120));
+  const foto = $('foto').checked;
+  $('cardRes').hidden = false;
+  $('resultado').innerHTML = '<p class="cargando">Consultando ENAIRE…</p>';
+  const capas = CAPAS.filter(c => foto || !c.soloFoto);
+  const res = await Promise.allSettled(capas.map(c => consultarCapa(c, p, h)));
+  if (n !== consultaN) return;
+  const zonas = [], vistas = new Set(); let fallos = 0;
+  res.forEach((r, i) => {
+    if (r.status !== 'fulfilled'){ fallos++; return; }
+    r.value.forEach(a => { const z = construirZona(capas[i], a); if (!vistas.has(z.clave)){ vistas.add(z.clave); zonas.push(z); } });
+  });
+  const orden = { rojo:0, naranja:1, info:2 };
+  zonas.sort((x,y) => orden[x.nivel]-orden[y.nivel]);
+  pintar(zonas, fallos, p, h, foto);
+}
+
+function pintar(zonas, fallos, p, h, foto){
+  const R = $('resultado'); R.innerHTML = '';
+  const hayRojo = zonas.some(z => z.nivel==='rojo');
+  const hayNar = zonas.some(z => z.nivel==='naranja' && z.c.titulo!=='Entorno urbano');
+  const res = document.createElement('div');
+  if (hayRojo){ res.className='resumen rojo'; res.textContent='Hay zonas donde no se permite volar sin coordinación o autorización previa.'; }
+  else if (hayNar){ res.className='resumen naranja'; res.textContent='Se puede volar cumpliendo condiciones o haciendo algún trámite. Revisa cada zona.'; }
+  else { res.className='resumen ok'; res.textContent='Sin restricciones aeronáuticas en este punto. Revisa los avisos informativos.'; }
+  R.appendChild(res);
+  const meta = document.createElement('p'); meta.className='punto';
+  meta.textContent = `${textoPunto(p)} · hasta ${h} m${foto?' · vuelo fotográfico/vídeo':''} · consultado ${new Date().toLocaleString('es-ES')}`;
+  R.appendChild(meta);
+  if (fallos) R.insertAdjacentHTML('beforeend', `<div class="aviso error">No respondieron ${fallos} de las capas de ENAIRE. Vuelve a consultar o compruébalo en ENAIRE Drones.</div>`);
+  if (!zonas.length) R.insertAdjacentHTML('beforeend','<p>ENAIRE no devuelve ninguna zona en este punto.</p>');
+
+  zonas.forEach(z => {
+    const d = document.createElement('div'); d.className = `zona ${z.nivel}`;
+    const t = document.createElement('div'); t.className='tit';
+    t.innerHTML = `<span class="etq ${z.nivel}">${NOMBRE_NIVEL[z.nivel]}</span>`;
+    t.appendChild(document.createTextNode(z.c.titulo + (z.nombre ? ` — ${z.nombre}` : '')));
+    d.appendChild(t);
+    const tx = limpiar(z.html); tx.className='txt'; d.appendChild(tx);
+    if (z.correos.length){
+      const c = document.createElement('div'); c.className='correos';
+      c.innerHTML = `<div class="em">Contacto: ${z.correos.join(', ')}</div>`;
+      const ac = document.createElement('div'); ac.className='acciones';
+      const b1 = document.createElement('button'); b1.textContent='Preparar correo';
+      b1.onclick = () => abrirCorreo(z, p, h, foto);
+      const b2 = document.createElement('button'); b2.className='sec'; b2.textContent='Copiar texto';
+      b2.onclick = async () => { const m = redactar(z, p, h, foto); try{ await navigator.clipboard.writeText(`Para: ${z.correos.join(', ')}\nAsunto: ${m.asunto}\n\n${m.cuerpo}`); b2.textContent='Copiado'; }catch(e){ b2.textContent='No se pudo copiar'; } setTimeout(()=>b2.textContent='Copiar texto',2000); };
+      ac.append(b1, b2); c.appendChild(ac); d.appendChild(c);
+    }
+    R.appendChild(d);
+  });
+}
+
+// ---------- correos ----------
+function fechaBonita(){
+  const v = $('fecha').value; if (!v) return '[fecha por concretar]';
+  return new Date(v+'T12:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+function redactar(z, p, h, foto){
+  const nombre = $('dNombre').value.trim() || '[nombre]';
+  const zona = z.c.titulo + (z.nombre ? ` (${z.nombre})` : '');
+  const asunto = `Consulta vuelo de dron - ${zona} - ${$('fecha').value || 'fecha por concretar'}`;
+  const lineas = [
+    'Buenos días:',
+    '',
+    `Les escribo porque quiero realizar un vuelo de dron en un punto que, según ENAIRE Drones, se encuentra en la zona "${zona}", y me indica este correo como contacto.`,
+    '',
+    'Datos del vuelo:',
+    `- Ubicación: ${aDms(p[0],'N','S')}, ${aDms(p[1],'E','W')} (${p[0].toFixed(6)}, ${p[1].toFixed(6)})`,
+    `- Mapa: ${enlaceMaps(p)}`,
+    `- Fecha: ${fechaBonita()}`,
+    `- Horario: de ${$('horaIni').value || '--:--'} a ${$('horaFin').value || '--:--'} (hora local)`,
+    `- Altura máxima sobre el suelo: ${h} m`,
+    `- Tipo de operación: VLOS, categoría ${$('dCategoria').value}${foto ? ', con toma de fotografía/vídeo' : ''}`,
+    `- Finalidad: ${$('finalidad').value.trim() || '[finalidad]'}`,
+    `- Dron: ${$('dDron').value.trim() || '[modelo y clase]'}`,
+    `- Operador UAS: ${nombre}${$('dOperador').value.trim() ? `, nº ${$('dOperador').value.trim()}` : ''}`,
+    '',
+    '¿Podrían indicarme si es posible realizar este vuelo y qué coordinación, autorización o documentación necesitan por mi parte?',
+    '',
+    'Muchas gracias. Un saludo,',
+    nombre,
+  ];
+  if ($('dTel').value.trim()) lineas.push(`Tel.: ${$('dTel').value.trim()}`);
+  return { asunto, cuerpo: lineas.join('\n') };
+}
+function abrirCorreo(z, p, h, foto){
+  guardar();
+  const m = redactar(z, p, h, foto);
+  location.href = `mailto:${z.correos.join(',')}?subject=${encodeURIComponent(m.asunto)}&body=${encodeURIComponent(m.cuerpo)}`;
+}
+
+cargar();
+(function(){ const d=new Date(); d.setDate(d.getDate()+7); $('fecha').value = d.toISOString().slice(0,10); })();
+const q = new URLSearchParams(location.search).get('p');
+if (q){ const r = leerPunto(q); if (Array.isArray(r)){ $('entrada').value = q; fijar(r, true); } }
+</script>
+</body>
+</html>
