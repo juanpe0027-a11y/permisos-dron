@@ -79,6 +79,12 @@ button:disabled{opacity:.5;cursor:default}
 .correos{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
 .correos .em{font-size:.85rem;color:var(--muted);margin-bottom:6px;word-break:break-all}
 details summary{cursor:pointer;font-weight:600}
+.resumen-final{margin-top:16px;border:2px solid var(--accent)}
+.lista-resumen{margin:0;padding-left:20px}
+.lista-resumen li{margin:6px 0;font-size:.95rem}
+.lista-resumen li.rojo{color:var(--rojo);font-weight:600}
+.lista-resumen li.naranja{color:var(--naranja);font-weight:600}
+.lista-resumen li.ok{color:var(--ok)}
 .pie{font-size:.8rem;color:var(--muted);text-align:center;padding:10px 16px 30px}
 .cargando{color:var(--muted);font-style:italic}
 </style>
@@ -282,7 +288,20 @@ async function leerPlusCode(t){
   return ref ? { p: olcRecuperar(code, ref.p[0], ref.p[1]), nombre: `${code} ${lugar}` } : null;
 }
 
-const AVISO_CORTO ='Ese enlace corto de Maps no lleva las coordenadas dentro. Haz una de estas dos cosas:<br>• Toca el punto en el mapa de abajo.<br>• En Google Maps, mantén pulsado el punto, toca las coordenadas que salen arriba (se copian) y pulsa «Pegar».';
+// Traductor propio (Google Apps Script) que abre los enlaces cortos de Maps y devuelve las coordenadas
+const TRADUCTOR = '';
+async function resolverEnlace(t){
+  const u = (t.match(/https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps)\/\S+/i) || [])[0];
+  if (!u || !TRADUCTOR) return null;
+  const d = await (await fetch(`${TRADUCTOR}?u=${encodeURIComponent(u)}`)).json();
+  if (d.error === 'caducado') return { caducado:true };
+  if (typeof d.lat === 'number') return { p:[d.lat, d.lng], nombre:'enlace de Google Maps' };
+  // sin coordenadas en la dirección larga: se busca el nombre del sitio
+  const lugar = decodeURIComponent(((d.url || '').match(/\/place\/([^/@?]+)/) || (d.url || '').match(/[?&]q=([^&]+)/) || [])[1] || '').replace(/\+/g, ' ');
+  return lugar ? buscarDireccion(lugar) : null;
+}
+
+const AVISO_CORTO = 'Ese enlace corto de Maps no lleva las coordenadas dentro. Haz una de estas dos cosas:<br>• Toca el punto en el mapa de abajo.<br>• En Google Maps, mantén pulsado el punto, toca las coordenadas que salen arriba (se copian) y pulsa «Pegar».';
 function avisoInfo(t){ $('msgEntrada').innerHTML = `<div class="aviso info"></div>`; $('msgEntrada').firstChild.textContent = t; }
 
 $('btnBuscar').onclick = async () => {
@@ -293,8 +312,16 @@ $('btnBuscar').onclick = async () => {
     if (Math.abs(r[0])>90 || Math.abs(r[1])>180) return mensaje('Esas coordenadas no son válidas.');
     mensaje(''); return fijar(r, true);
   }
+  if (r === 'corto' && TRADUCTOR){
+    avisoInfo('Leyendo el enlace de Maps…');
+    try {
+      const g = await resolverEnlace(txt);
+      if (g && g.caducado) return mensaje('Este enlace no funciona ni en Google Maps (está caducado). Compártelo otra vez desde Maps o toca el punto en el mapa.');
+      if (g){ avisoInfo(`Encontrado: ${g.nombre}. Si no es el sitio exacto, toca el punto en el mapa.`); return fijar(g.p, true); }
+    } catch(e){}
+  }
   // no son coordenadas: código de Maps o dirección, quitando enlaces y textos genéricos de Maps
-  const dir = txt.replace(/https?:\/\/\S+/g, ' ')
+  const dir =txt.replace(/https?:\/\/\S+/g, ' ')
     .replace(/\b(ubicaci[oó]n marcada|chincheta|dropped pin|mi ubicaci[oó]n|ver en google maps)\b/gi, ' ')
     .replace(/\s+/g, ' ').trim();
   if (dir.length < 3) return mensaje(r === 'corto' ? AVISO_CORTO : 'Escribe unas coordenadas, una dirección o toca el mapa.');
@@ -330,7 +357,7 @@ $('btnGps').onclick = () => {
     navigator.geolocation.getCurrentPosition(ok, fallo, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
   }, { enableHighAccuracy:false, timeout:8000, maximumAge:60000 });
 };
-['altura','foto'].forEach(k => $(k).addEventListener('change', () => { if (punto) consultar(); }));
+['altura','foto','fecha','horaIni','horaFin'].forEach(k => $(k).addEventListener('change', () => { if (punto) consultar(); }));
 
 // ---------- limpieza del HTML de ENAIRE ----------
 function limpiar(html){
@@ -377,34 +404,144 @@ async function consultarCapa(c, p, h){
   return d.features.map(f => f.attributes);
 }
 
-function construirZona(c, a){
-  let html, nombre;
+// ---------- NOTAM: alturas, fechas y horario frente al vuelo previsto ----------
+// itemF / itemG: «SFC», «GND», «00120M AGL», «02500FT AMSL», «FL140», «UNL»
+function alturaNotam(t){
+  t = String(t || '').toUpperCase().trim();
+  if (!t || /^(SFC|GND)/.test(t)) return { m:0, sobreSuelo:true };
+  if (/UNL/.test(t)) return { m:Infinity, sobreSuelo:false };
+  let m = t.match(/^FL\s*(\d+)/);
+  if (m) return { m: +m[1] * 100 * 0.3048, sobreSuelo:false };
+  m = t.match(/(\d+)\s*(FT|M)\s*(AGL|AMSL|MSL)?/);
+  if (m) return { m: m[2] === 'FT' ? +m[1] * 0.3048 : +m[1], sobreSuelo: m[3] === 'AGL' };
+  return null;
+}
+const textoAltura = x => !x ? '?' : x.m === 0 ? 'el suelo' : x.m === Infinity ? 'sin límite' : `${Math.round(x.m)} m ${x.sobreSuelo ? 'sobre el suelo' : 'sobre el mar'}`;
+
+// Ventana del vuelo previsto (hora local del móvil)
+function ventanaVuelo(){
+  const f = $('fecha').value;
+  if (!f) return null;
+  const ini = new Date(`${f}T${$('horaIni').value || '00:00'}`), fin = new Date(`${f}T${$('horaFin').value || '23:59'}`);
+  return fin > ini ? { ini, fin } : { ini, fin: new Date(ini.getTime() + 3600e3) };
+}
+
+// Horario del NOTAM (campo D, en UTC). Solo formatos sencillos; si no se entiende, devuelve null.
+const DIAS = { SUN:0, MON:1, TUE:2, WED:3, THU:4, FRI:5, SAT:6 };
+function horarioActivo(d, v){
+  d = String(d || '').toUpperCase().trim();
+  if (!d) return true;                       // sin horario: activo toda la vigencia
+  if (/^SR\s*-\s*SS$/.test(d)) return true;  // de orto a ocaso: un vuelo de día cae dentro
+  let dias = null, m = d.match(/^(DAILY\s+)?((MON|TUE|WED|THU|FRI|SAT|SUN)(\s*-\s*(MON|TUE|WED|THU|FRI|SAT|SUN))?\s+)?(\d{4})\s*-\s*(\d{4})$/);
+  if (!m) return null;
+  if (m[3]){
+    const a = DIAS[m[3]], b = m[5] ? DIAS[m[5]] : a; dias = [];
+    for (let i = a; ; i = (i + 1) % 7){ dias.push(i); if (i === b) break; }
+  }
+  const hIni = +m[6].slice(0,2) * 60 + +m[6].slice(2), hFin = +m[7].slice(0,2) * 60 + +m[7].slice(2);
+  // se comprueba cada media hora del vuelo
+  for (let t = v.ini.getTime(); t <= v.fin.getTime(); t += 30 * 60e3){
+    const x = new Date(t), min = x.getUTCHours() * 60 + x.getUTCMinutes();
+    if (dias && !dias.includes(x.getUTCDay())) continue;
+    if (hIni <= hFin ? (min >= hIni && min <= hFin) : (min >= hIni || min <= hFin)) return true;
+  }
+  return false;
+}
+
+function analizarNotam(a, h, suelo){
+  const bajo = typeof a.LOWER_VAL_AGL === 'number' ? { m:a.LOWER_VAL_AGL, sobreSuelo:true } : alturaNotam(a.itemF);
+  const alto = alturaNotam(a.itemG);
+  const alturas = `desde ${textoAltura(bajo)} hasta ${textoAltura(alto)}`;
+  let altura = 'afecta';
+  if (bajo){
+    const sobreSuelo = bajo.sobreSuelo ? bajo.m : bajo.m - sueloPrudente(suelo);
+    if (sobreSuelo >= h) altura = 'no';
+    else if (!bajo.sobreSuelo && typeof suelo !== 'number' && bajo.m > h) altura = 'quiza';   // sin altitud del terreno
+  }
+  if (alto && alto.sobreSuelo && alto.m === 0) altura = 'no';
+  const v = ventanaVuelo();
+  let fecha = 'sin_fecha', horario = null;
+  if (v){
+    const vigente = (!a.itemB || a.itemB <= v.fin.getTime()) && (!a.itemC || a.itemC >= v.ini.getTime());
+    horario = vigente ? horarioActivo(a.itemD, v) : false;
+    fecha = !vigente ? 'no' : horario === false ? 'no_horario' : horario === null ? 'revisar' : 'si';
+  }
+  let estado, frase;
+  if (altura === 'no'){ estado = 'no'; frase = `No te afecta: empieza a ${textoAltura(bajo)}${!bajo.sobreSuelo && typeof suelo === 'number' ? ` (unos ${Math.round(bajo.m - suelo)} m sobre el suelo aquí)` : ''}, por encima de tus ${h} m.`; }
+  else if (fecha === 'no'){ estado = 'no'; frase = `No está vigente el día de tu vuelo (vigencia ${a.itemBstr} → ${a.itemCstr} UTC).`; }
+  else if (fecha === 'no_horario'){ estado = 'no'; frase = `Vigente ese día pero fuera de tu horario (activo ${a.itemD} UTC).`; }
+  else if (altura === 'quiza'){ estado = 'quiza'; frase = `Puede afectarte según la altitud del terreno: empieza ${textoAltura(bajo)}.`; }
+  else if (fecha === 'revisar'){ estado = 'quiza'; frase = `Vigente ese día; revisa su horario (${a.itemD} UTC) frente al tuyo.`; }
+  else if (fecha === 'sin_fecha'){ estado = 'quiza'; frase = 'Pon la fecha del vuelo para saber si está activo.'; }
+  else { estado = 'afecta'; frase = `TE AFECTA: activo durante tu vuelo y ${alturas}.`; }
+  return { estado, frase, alturas };
+}
+
+function construirZona(c, a, h, suelo){
+  let html, nombre, notam = null;
   if (c.notam){
-    nombre = `NOTAM ${a.notamId||''}`.trim();
-    html = `<p><b>${a.areaSactaName||a.incidenceType||''}</b></p>`
-      + `<p>Vigencia: ${a.itemBstr||'?'} → ${a.itemCstr||'?'} (UTC)${a.itemD?` · Horario: ${a.itemD}`:''}</p>`
-      + `<p>Alturas: ${a.FLYING_LEVELS_DESC || `${a.itemF||''} / ${a.itemG||''}`}</p>`
-      + `<p>${(a.DESCRIPTION || a.itemE || '').replace(/</g,'&lt;')}</p>`;
+    notam = analizarNotam(a, h, suelo);
+    nombre = `${a.notamId || ''}${a.areaSactaName ? ` (${a.areaSactaName})` : ''}`.trim();
+    html = `<p><b>${notam.frase}</b></p>`
+      + `<p>Vigencia: ${a.itemBstr||'?'} → ${a.itemCstr||'?'} (UTC)${a.itemD?` · Horario: ${a.itemD} UTC`:''}</p>`
+      + `<p>Alturas: ${notam.alturas} (${a.FLYING_LEVELS_DESC || `${a.itemF||''} / ${a.itemG||''}`})</p>`
+      + `<p>${a.itemE || ''}</p>`;
   } else {
     html = a.REMARKS_TXT || a.REMARKS_TXT_ART || a.DESCRIPTION || '';
     nombre = a.NAME_TXT || a.IDENT_TXT || a.NOMBRE_50 || a.SITE_NAME || a.NOMBRE || '';
   }
   const textoPlano = html.replace(/<[^>]+>/g,' ');
   let nivel = c.nivel;
-  if (nivel==='auto') nivel = /no\s+permitido|prohibid[oa]\s+el\s+vuelo|NO permitted/i.test(textoPlano) ? 'rojo' : 'naranja';
+  if (notam) nivel = { afecta:'rojo', quiza:'naranja', no:'info' }[notam.estado];
+  else if (nivel==='auto') nivel = /no\s+permitido|prohibid[oa]\s+el\s+vuelo|NO permitted/i.test(textoPlano) ? 'rojo' : 'naranja';
   if (c.titulo==='Entorno urbano') nombre = '';
-  return { c, a, html, nombre, nivel, correos: correosDe(a, html), clave: c.url + '|' + textoPlano.slice(0,300) };
+  return { c, a, html, nombre, nivel, notam, correos: correosDe(a, html), clave: c.url + '|' + (a.notamId || textoPlano.slice(0,300)) };
+}
+
+// Frase clave de una zona para el resumen: lo que ENAIRE marca en rojo o en negrita
+function fraseClave(z){
+  if (z.notam) return z.notam.frase;
+  if (z.c.titulo === 'Entorno urbano') return 'Si vuelas en zona urbana, comunica el vuelo al Ministerio del Interior con 5 días de antelación.';
+  if (/^(ENP|ZEPA)/.test(z.c.url.split('/')[0]) || /natural|aves/i.test(z.c.titulo)) return 'Solo informativo: no molestes a la fauna.';
+  const doc = new DOMParser().parseFromString(`<div>${z.html}</div>`, 'text/html');
+  const limpio = t => t.replace(/\s+/g, ' ').trim();
+  const rojo = [...doc.querySelectorAll('font')].filter(f => /dc143c|red|d2691e/i.test(f.getAttribute('color') || '')).map(f => limpio(f.textContent)).filter(t => t.length > 12);
+  const negrita = [...doc.querySelectorAll('b')].map(b => limpio(b.textContent)).filter(t => t.length > 25);
+  let t = rojo[0] || negrita[0] || limpio(doc.body.textContent).split(/(?<=\.)\s/)[0] || '';
+  // un trozo rojo corto («NO permitido…», «temporalmente segregada:») se completa con su párrafo
+  // o con la frase de entrada, que va antes del primer <p>
+  if (rojo[0] && rojo[0].length < 40){
+    const par = [...doc.querySelectorAll('p')].find(x => x.textContent.includes(rojo[0]));
+    const raiz = doc.body.firstChild, intro = [];
+    for (const n of raiz.childNodes){ if (n.nodeName === 'P') break; intro.push(n.textContent); }
+    t = limpio(par ? par.textContent : intro.join(' ')).replace(/^Se encuentra en (una |un )?/i, '');
+    t = t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  const inf = [...doc.querySelectorAll('p')].map(x => limpio(x.textContent)).find(x => /^Nivel inferior/i.test(x));
+  if (inf && !t.includes(inf)) t += ` ${inf.replace(/\.$/, '')}.`;
+  return t.length > 200 ? t.slice(0, 197) + '…' : t;
 }
 
 // Zonas cuyo límite inferior queda por encima del dron. LOWER_VAL viene en metros; si se mide
 // sobre el suelo se compara con la altura del vuelo, y si es sobre el mar (o nivel de vuelo FL)
 // se deja margen por la altitud del terreno (el punto más alto de España ronda los 3.700 m).
 const MARGEN_TERRENO = 3800;
-function porEncima(a, h){
+// Con la altitud del terreno del punto (si se conoce) se pasa todo a metros sobre el suelo.
+// Sin ella se supone terreno alto (caso más prudente).
+const sueloPrudente = suelo => typeof suelo === 'number' ? suelo : MARGEN_TERRENO - 100;
+// DISTVERTLOWER_CODE de ENAIRE: HEIG = desde el suelo, HEIS / STD = desde el mar, HEISG = «AGL/AMSL»
+// (se toma la medida desde el mar, que es la que queda más baja sobre el terreno).
+function inferiorSobreSuelo(a, suelo){
   const v = a.LOWER_VAL;
-  if (typeof v !== 'number' || a.notamId) return false;
-  const sobreSuelo = /^(HEI|AGL|SFC)$/i.test(a.DISTVERTLOWER_CODE || '') || /AGL/i.test(a.DISTVERTLOWER_UOM || '');
-  return sobreSuelo ? v >= h : v >= h + MARGEN_TERRENO;
+  if (typeof v !== 'number') return null;
+  const cod = String(a.DISTVERTLOWER_CODE || '').toUpperCase().replace(/^HEI/, '');
+  const desdeSuelo = (cod === 'G' || cod === 'SFC' || /AGL/i.test(a.DISTVERTLOWER_UOM || '')) && !/S/.test(cod);
+  return desdeSuelo ? v : v - sueloPrudente(suelo);
+}
+function porEncima(a, h, suelo){
+  if (a.notamId) return false;
+  const x = inferiorSobreSuelo(a, suelo);
+  return x !== null && x >= h;
 }
 
 let consultaN = 0;
@@ -418,25 +555,28 @@ async function consultar(){
   $('txtPunto').textContent = `${textoPunto(p)} · consultando…`;
   $('cardRes').scrollIntoView({ behavior:'smooth', block:'start' });
   const capas = CAPAS.filter(c => foto || !c.soloFoto);
+  const pSuelo = fetch(`https://api.open-meteo.com/v1/elevation?latitude=${p[0]}&longitude=${p[1]}`)
+    .then(r => r.json()).then(d => typeof d.elevation?.[0] === 'number' ? d.elevation[0] : null).catch(() => null);
   const res = await Promise.allSettled(capas.map(c => consultarCapa(c, p, h)));
+  const suelo = await pSuelo;
   if (n !== consultaN) return;
   const zonas = [], altas = [], vistas = new Set(); let fallos = 0;
   res.forEach((r, i) => {
     if (r.status !== 'fulfilled'){ fallos++; return; }
     r.value.forEach(a => {
-      const z = construirZona(capas[i], a);
+      const z = construirZona(capas[i], a, h, suelo);
       if (vistas.has(z.clave)) return;
       vistas.add(z.clave);
-      (porEncima(a, h) ? altas : zonas).push(z);
+      (porEncima(a, h, suelo) ? altas : zonas).push(z);
     });
   });
   const orden = { rojo:0, naranja:1, info:2 };
   zonas.sort((x,y) => orden[x.nivel]-orden[y.nivel]);
-  pintar(zonas, fallos, p, h, foto, altas);
+  pintar(zonas, fallos, p, h, foto, altas, suelo);
   $('txtPunto').textContent = textoPunto(p);
 }
 
-function pintar(zonas, fallos, p, h, foto, altas){
+function pintar(zonas, fallos, p, h, foto, altas, suelo){
   const R = $('resultado'); R.innerHTML = '';
   const hayRojo = zonas.some(z => z.nivel==='rojo');
   const hayNar = zonas.some(z => z.nivel==='naranja' && z.c.titulo!=='Entorno urbano');
@@ -446,7 +586,7 @@ function pintar(zonas, fallos, p, h, foto, altas){
   else { res.className='resumen ok'; res.textContent='Sin restricciones aeronáuticas en este punto. Revisa los avisos informativos.'; }
   R.appendChild(res);
   const meta = document.createElement('p'); meta.className='punto';
-  meta.textContent = `${textoPunto(p)} · hasta ${h} m${foto?' · vuelo fotográfico/vídeo':''} · consultado ${new Date().toLocaleString('es-ES')}`;
+  meta.textContent = `${textoPunto(p)} · terreno a ${typeof suelo === 'number' ? `${Math.round(suelo)} m` : '¿?'} sobre el mar · hasta ${h} m${foto?' · vuelo fotográfico/vídeo':''} · consultado ${new Date().toLocaleString('es-ES')}`;
   R.appendChild(meta);
   if (fallos) R.insertAdjacentHTML('beforeend', `<div class="aviso error">No respondieron ${fallos} de las capas de ENAIRE. Vuelve a consultar o compruébalo en ENAIRE Drones.</div>`);
   if (!zonas.length) R.insertAdjacentHTML('beforeend','<p>ENAIRE no devuelve ninguna zona en este punto.</p>');
@@ -477,11 +617,50 @@ function pintar(zonas, fallos, p, h, foto, altas){
     altas.forEach(z => {
       const a = z.a, nivel = a.DISTVERTLOWER_UOM === 'FL' ? `FL${a.DISTVERTLOWER_VAL}` : `${a.DISTVERTLOWER_VAL} ${a.DISTVERTLOWER_UOM || ''}`;
       const p = document.createElement('p'); p.className = 'punto';
-      p.textContent = `${z.c.titulo}${z.nombre ? ` — ${z.nombre}` : ''}: empieza en ${nivel} (unos ${Math.round(a.LOWER_VAL)} m sobre el nivel del mar).`;
+      p.textContent = `${z.c.titulo}${z.nombre ? ` — ${z.nombre}` : ''}: empieza en ${nivel}, unos ${Math.round(inferiorSobreSuelo(a, suelo))} m sobre el suelo aquí.`;
       det.appendChild(p);
     });
     R.appendChild(det);
   }
+
+  pintarResumen(zonas, altas, h, fallos, suelo);
+}
+
+// ---------- resumen final: solo lo importante ----------
+function pintarResumen(zonas, altas, h, fallos, suelo){
+  const notams = zonas.filter(z => z.notam);
+  const resto = zonas.filter(z => !z.notam);
+  const notamAfecta = notams.filter(z => z.notam.estado === 'afecta');
+  const notamDuda = notams.filter(z => z.notam.estado === 'quiza');
+  const rojo = zonas.some(z => z.nivel === 'rojo');
+  const naranja = zonas.some(z => z.nivel === 'naranja' && z.c.titulo !== 'Entorno urbano');
+
+  const s = document.createElement('div'); s.className = 'card resumen-final';
+  const veredicto = rojo
+    ? ['rojo', '⛔ NO se puede volar sin coordinación o autorización previa.']
+    : naranja ? ['naranja', '⚠️ SÍ se puede volar, cumpliendo condiciones o haciendo algún trámite.']
+    : ['ok', `✅ SÍ se puede volar hasta ${h} m.`];
+  s.innerHTML = `<h2>Resumen</h2><div class="resumen ${veredicto[0]}"></div><ul class="lista-resumen"></ul>`;
+  s.querySelector('.resumen').textContent = veredicto[1];
+  const ul = s.querySelector('ul');
+  const li = (t, clase) => { const e = document.createElement('li'); if (clase) e.className = clase; e.textContent = t; ul.appendChild(e); };
+
+  // NOTAM
+  if (!notams.length) li('NOTAM: ninguno en este punto.', 'ok');
+  else {
+    const n = notams.length - notamAfecta.length - notamDuda.length;
+    li(`NOTAM: ${notams.length} en la zona → ${notamAfecta.length} te afectan, ${notamDuda.length} por revisar, ${n} no te afectan.`, notamAfecta.length ? 'rojo' : notamDuda.length ? 'naranja' : 'ok');
+    [...notamAfecta, ...notamDuda].forEach(z => li(`${z.nombre}: ${z.notam.frase}`, z.nivel));
+  }
+  // resto de zonas que piden algo
+  resto.filter(z => z.nivel !== 'info' || /natural|aves/i.test(z.c.titulo)).forEach(z => {
+    const contacto = z.correos.length ? ` Contacto: ${z.correos.join(', ')}.` : '';
+    li(`${z.c.titulo}${z.nombre ? ` (${z.nombre})` : ''}: ${fraseClave(z)}${z.nivel === 'info' ? '' : contacto}`, z.nivel === 'info' ? '' : z.nivel);
+  });
+  if (altas.length) li(`${altas.length} zona(s) muy por encima de tu vuelo: no te afectan.`, 'ok');
+  if (typeof suelo !== 'number') li('No se pudo saber la altitud del terreno: las zonas medidas desde el mar se han tratado con prudencia.', 'naranja');
+  if (fallos) li(`Atención: ${fallos} capa(s) de ENAIRE no respondieron; el resumen puede estar incompleto.`, 'rojo');
+  $('resultado').appendChild(s);
 }
 
 // ---------- correos ----------
