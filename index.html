@@ -47,7 +47,10 @@ button:disabled{opacity:.5;cursor:default}
 .acciones{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .check{display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--text);font-size:.95rem}
 .check input{width:auto}
-#mapa{height:260px;border-radius:10px;margin-top:10px;border:1px solid var(--line)}
+.campo{position:relative}
+.campo input{padding-right:48px}
+.borrar{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:40px;height:40px;padding:0;border-radius:50%;background:transparent;color:var(--muted);font-size:1.2rem}
+#mapa{height:340px;border-radius:10px;margin-top:10px;border:1px solid var(--line)}
 .punto{font-size:.9rem;color:var(--muted);margin-top:8px;word-break:break-word}
 .aviso{padding:10px 12px;border-radius:8px;margin:8px 0;font-size:.95rem}
 .aviso.error{background:var(--rojo-bg);color:var(--rojo)}
@@ -84,9 +87,14 @@ details summary{cursor:pointer;font-weight:600}
   <section class="card">
     <h2>1. Punto de vuelo</h2>
     <label for="entrada">Coordenadas o enlace de Google Maps</label>
-    <input id="entrada" placeholder="38°41′58.72″ N, 0°28′29.77″ W  ·  38.6996, -0.4749  ·  enlace de Maps" autocomplete="off">
+    <div class="campo">
+      <input id="entrada" placeholder="Pega aquí el punto" autocomplete="off">
+      <button id="btnBorrar" type="button" class="borrar" aria-label="Borrar" hidden>✕</button>
+    </div>
+    <div class="punto">Ej.: 38°41′58.72″ N, 0°28′29.77″ W · 38.6996, -0.4749</div>
     <div class="acciones">
       <button id="btnBuscar">Consultar</button>
+      <button id="btnPegar" class="sec">Pegar</button>
       <button id="btnGps" class="sec">Mi ubicación</button>
     </div>
     <div id="msgEntrada"></div>
@@ -194,13 +202,22 @@ const enlaceMaps = p => `https://www.google.com/maps?q=${p[0].toFixed(6)},${p[1]
 
 // ---------- mapa ----------
 const mapa = L.map('mapa').setView([40.2, -3.7], 5);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(mapa);
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+const calles = L.tileLayer(ESRI + 'World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom:19, attribution:'© Esri, HERE, OpenStreetMap' }).addTo(mapa);
+const satelite = L.layerGroup([
+  L.tileLayer(ESRI + 'World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, attribution:'© Esri' }),
+  L.tileLayer(ESRI + 'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom:19 }),
+  L.tileLayer(ESRI + 'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom:19 }),
+]);
+L.control.layers({ 'Calles':calles, 'Satélite':satelite }, null, { collapsed:false }).addTo(mapa);
 mapa.on('click', e => fijar([e.latlng.lat, e.latlng.lng], true));
 
 function fijar(p, consultarYa){
   punto = p;
   if (marcador) marcador.setLatLng(p); else marcador = L.marker(p).addTo(mapa);
-  mapa.setView(p, Math.max(mapa.getZoom(), 14));
+  mapa.setView(p, Math.max(mapa.getZoom(), 16));
+  verBorrar();
   $('txtPunto').textContent = textoPunto(p);
   if (consultarYa) consultar();
 }
@@ -213,12 +230,28 @@ $('btnBuscar').onclick = () => {
   mensaje(''); fijar(r, true);
 };
 $('entrada').addEventListener('keydown', e => { if (e.key==='Enter') $('btnBuscar').click(); });
+const verBorrar = () => { $('btnBorrar').hidden = !$('entrada').value; };
+$('entrada').addEventListener('input', verBorrar);
+$('btnBorrar').onclick = () => { $('entrada').value = ''; verBorrar(); mensaje(''); $('entrada').focus(); };
+$('btnPegar').onclick = async () => {
+  try { $('entrada').value = (await navigator.clipboard.readText()).trim(); verBorrar(); $('btnBuscar').click(); }
+  catch(e){ mensaje('No se pudo leer el portapapeles. Mantén pulsado el campo y elige Pegar.'); }
+};
 $('btnGps').onclick = () => {
-  if (!navigator.geolocation) return mensaje('Este navegador no da la ubicación.');
-  navigator.geolocation.getCurrentPosition(
-    pos => { mensaje(''); fijar([pos.coords.latitude, pos.coords.longitude], true); },
-    () => mensaje('No se pudo obtener la ubicación. Revisa el permiso de ubicación del navegador.'),
-    { enableHighAccuracy:true, timeout:15000 });
+  if (!navigator.geolocation || !window.isSecureContext) return mensaje('Este navegador no da la ubicación. Abre la app en Chrome.');
+  const b = $('btnGps'); b.disabled = true; b.textContent = 'Buscando…';
+  const fin = () => { b.disabled = false; b.textContent = 'Mi ubicación'; };
+  const ok = pos => { fin(); mensaje(''); $('entrada').value = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`; fijar([pos.coords.latitude, pos.coords.longitude], true); };
+  const fallo = err => {
+    fin();
+    if (err.code === 1) mensaje('El móvil no deja usar la ubicación. Toca el candado o los tres puntos de la barra de arriba → Permisos → Ubicación → Permitir. Si la abriste desde WhatsApp, ábrela en Chrome. Revisa también que la ubicación del móvil esté activada.');
+    else mensaje('No se pudo obtener la ubicación. Activa la ubicación del móvil (GPS) y vuelve a probar.');
+  };
+  // primero rápido (wifi/red); si falla, se intenta con GPS
+  navigator.geolocation.getCurrentPosition(ok, e => {
+    if (e.code === 1) return fallo(e);
+    navigator.geolocation.getCurrentPosition(ok, fallo, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
+  }, { enableHighAccuracy:false, timeout:8000, maximumAge:60000 });
 };
 ['altura','foto'].forEach(k => $(k).addEventListener('change', () => { if (punto) consultar(); }));
 
