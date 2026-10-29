@@ -77,6 +77,12 @@ button:disabled{opacity:.5;cursor:default}
 .zona .txt a{color:var(--accent)}
 .zona .txt .rojo{color:var(--rojo);font-weight:600}
 .correos{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.contactos{list-style:none;margin:6px 0 8px;padding:0}
+.contactos li{padding:6px 0;border-bottom:1px solid var(--line);word-break:break-word}
+.contactos li:last-child{border-bottom:0}
+.contactos a{font-weight:600}
+.contactos .para{font-size:.85rem;color:var(--muted);margin-top:2px}
+.resumen-final h3{font-size:1rem;margin:14px 0 4px}
 .correos .em{font-size:.85rem;color:var(--muted);margin-bottom:6px;word-break:break-all}
 details summary{cursor:pointer;font-weight:600}
 .resumen-final{margin-top:16px;border:2px solid var(--accent)}
@@ -392,11 +398,74 @@ function limpiar(html){
   })(doc.body.firstChild, sal);
   return sal;
 }
-function correosDe(attrs, texto){
-  const set = new Set();
-  String(attrs.EMAIL||'').split(/[;,\s]+/).forEach(e => { if (/@/.test(e)) set.add(e.trim().toLowerCase()); });
-  (texto.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []).forEach(e => set.add(e.toLowerCase()));
-  return [...set];
+// ---------- contactos: correos, webs y teléfonos, cada uno con para qué sirve ----------
+const ENTIDADES = [
+  [/skyway-ans\.com/, 'Skyway, control del aeródromo'], [/enaire\.es/, 'ENAIRE'], [/aena\.es/, 'Aena'],
+  [/fuvex\.com/, 'FUVEX, gestor de la zona segregada'], [/gva\.es/, 'Generalitat Valenciana'],
+  [/interior\.gob\.es|mir\.es/, 'Ministerio del Interior'], [/seguridadaerea\.gob\.es/, 'AESA'],
+  [/defensa\.gob\.es|ejercitodelaire|mde\.es/, 'Ministerio de Defensa'], [/miteco\.gob\.es/, 'MITECO'],
+];
+const entidad = v => (ENTIDADES.find(([re]) => re.test(v)) || [])[1] || '';
+function paraQue(tipo, valor, ctx, z){
+  const zona = z.c.titulo + (z.nombre ? ` (${z.nombre})` : '');
+  ctx = ctx.toLowerCase();
+  if (tipo === 'web'){
+    if (/interior\.gob\.es|mir\.es/.test(valor)) return 'Información para comunicar el vuelo al Ministerio del Interior (5 días antes) si vuelas en entorno urbano';
+    if (/seguridadaerea\.gob\.es/.test(valor)) return 'Normativa de AESA sobre zonas geográficas (solo consulta)';
+    if (/aip\.enaire\.es/.test(valor)) return `Publicación oficial de ENAIRE (AIP) con los detalles de ${zona} (solo consulta)`;
+    return `Página que indica ENAIRE para ${zona}`;
+  }
+  const como = tipo === 'tel' ? 'Llamar para' : 'Escribir para';
+  if (z.notam) return /coordina/.test(ctx) ? `${como} coordinar tu vuelo dentro del NOTAM ${z.a.notamId || ''}`.trim() : `Contacto del NOTAM ${z.a.notamId || ''}`.trim();
+  if (/solicitud|coordinaci|autoriza|permiso/.test(ctx)) return `${como} pedir la coordinación o autorización para volar en ${zona}`;
+  if (/más información|mas información|gestor/.test(ctx)) return `${como} consultar dudas al gestor de ${zona} (solo informativo)`;
+  return `Contacto que indica ENAIRE para ${zona}`;
+}
+function contactosDe(z){
+  const a = z.a, lista = [], vistos = new Set();
+  const doc = new DOMParser().parseFromString(`<div>${z.html}</div>`, 'text/html');
+  const texto = doc.body.textContent.replace(/\s+/g, ' ');
+  const contexto = idx => texto.slice(Math.max(0, idx - 220), idx);
+  const add = (tipo, valor, href, ctx) => {
+    const k = tipo + valor.toLowerCase();
+    if (vistos.has(k)) return; vistos.add(k);
+    lista.push({ tipo, valor, href, entidad: entidad(valor), para: paraQue(tipo, valor, ctx, z) });
+  };
+  // correos (también los escritos «NOMBRE(AT)DOMINIO.COM» o «nombre [at] dominio.es»)
+  const reMail = /([A-Z0-9._%+-]+)\s*(?:@|\(AT\)|\[AT\]|\{AT\})\s*([A-Z0-9.-]+\.[A-Z]{2,})/gi;
+  for (const m of texto.matchAll(reMail)){ const e = `${m[1]}@${m[2]}`.toLowerCase(); add('email', e, `mailto:${e}`, contexto(m.index)); }
+  String(a.EMAIL || a.email || '').split(/[;,\s]+/).filter(e => /@/.test(e)).forEach(e => add('email', e.trim().toLowerCase(), `mailto:${e.trim()}`, texto));
+  // webs: enlaces del texto de ENAIRE y direcciones escritas
+  for (const el of doc.querySelectorAll('a[href]')){
+    const h = el.getAttribute('href').trim();
+    if (/^https?:/i.test(h)) add('web', h, h, contexto(texto.indexOf(el.textContent.replace(/\s+/g, ' '))) + ' ' + el.textContent);
+  }
+  for (const m of texto.matchAll(/\b(?:https?:\/\/|www\.)[^\s<>"')]+[^\s<>"').,;]/gi)){ const h = /^www\./i.test(m[0]) ? `https://${m[0]}` : m[0]; add('web', h, h, contexto(m.index)); }
+  // teléfonos: con +34 o justo detrás de «teléfono», «tel», «phone»…
+  for (const m of texto.matchAll(/(?:(?:tel[eé]fono|tel[eé]f?|tlf|tfno|phone(?: number)?|m[oó]vil)[\s.:\w]{0,25}?|\+34)[\s.:-]*((?:\+34[\s.-]*)?[6-9](?:[\s.-]?\d){8})\b/gi)){
+    const num = m[1].replace(/\D/g, '').replace(/^34(?=\d{9}$)/, '');
+    if (num.length === 9) add('tel', `+34 ${num.slice(0,3)} ${num.slice(3,6)} ${num.slice(6)}`, `tel:+34${num}`, contexto(m.index + m[0].length));
+  }
+  // entorno urbano: además del enlace informativo, el formulario donde se hace la comunicación
+  if (z.c.titulo === 'Entorno urbano')
+    lista.push({ tipo:'web', valor:'https://drones.ses.mir.es/drones-web/', href:'https://drones.ses.mir.es/drones-web/', entidad:'Ministerio del Interior', para:'Formulario para hacer la comunicación del vuelo (mínimo 5 días antes)' });
+  return lista;
+}
+const ICONO = { email:'✉️', web:'🌐', tel:'📞' };
+function pintarContactos(lista, destino, conZona){
+  const ul = document.createElement('ul'); ul.className = 'contactos';
+  lista.forEach(k => {
+    const li = document.createElement('li');
+    const enl = document.createElement('a'); enl.href = k.href;
+    enl.textContent = k.tipo !== 'web' ? k.valor
+      : k.valor.replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*/, '') + (/\.pdf($|\?)/i.test(k.valor) ? ' (PDF)' : '');
+    if (k.tipo === 'web'){ enl.target = '_blank'; enl.rel = 'noopener'; }
+    li.append(`${ICONO[k.tipo]} `, enl);
+    const d = document.createElement('div'); d.className = 'para';
+    d.textContent = `${k.para}${k.entidad ? ` · ${k.entidad}` : ''}${conZona && k.zona && !k.para.includes(k.zona) && !/NOTAM/.test(k.para) ? ` · ${k.zona}` : ''}`;
+    li.appendChild(d); ul.appendChild(li);
+  });
+  destino.appendChild(ul);
 }
 
 // ---------- consulta ----------
@@ -435,26 +504,85 @@ function ventanaVuelo(){
   return fin > ini ? { ini, fin } : { ini, fin: new Date(ini.getTime() + 3600e3) };
 }
 
-// Horario del NOTAM (campo D, en UTC). Solo formatos sencillos; si no se entiende, devuelve null.
+// Horario del NOTAM (campo D, en UTC). Tramos separados por comas: «OCT 31 SR-SS, NOV 01-22 28-30 SR-SS»,
+// «MON-FRI 0600-1400», «02-05 09-12 0800-1300 1500-1900»… El mes se arrastra de un tramo al siguiente.
+// Devuelve true/false, o null si hay algo que no se entiende.
 const DIAS = { SUN:0, MON:1, TUE:2, WED:3, THU:4, FRI:5, SAT:6 };
-function horarioActivo(d, v){
-  d = String(d || '').toUpperCase().trim();
-  if (!d) return true;                       // sin horario: activo toda la vigencia
-  if (/^SR\s*-\s*SS$/.test(d)) return true;  // de orto a ocaso: un vuelo de día cae dentro
-  let dias = null, m = d.match(/^(DAILY\s+)?((MON|TUE|WED|THU|FRI|SAT|SUN)(\s*-\s*(MON|TUE|WED|THU|FRI|SAT|SUN))?\s+)?(\d{4})\s*-\s*(\d{4})$/);
-  if (!m) return null;
-  if (m[3]){
-    const a = DIAS[m[3]], b = m[5] ? DIAS[m[5]] : a; dias = [];
-    for (let i = a; ; i = (i + 1) % 7){ dias.push(i); if (i === b) break; }
+const MESES = { JAN:0, FEB:1, MAR:2, APR:3, MAY:4, JUN:5, JUL:6, AUG:7, SEP:8, OCT:9, NOV:10, DEC:11 };
+// Salida y puesta de sol (minutos UTC) con la fórmula de la NOAA
+function solUTC(f, lat, lon){
+  const n = Math.floor((Date.UTC(f.getUTCFullYear(), f.getUTCMonth(), f.getUTCDate()) - Date.UTC(f.getUTCFullYear(), 0, 0)) / 864e5);
+  const g = 2 * Math.PI / 365 * (n - 1), r = Math.PI / 180;
+  const eq = 229.18 * (0.000075 + 0.001868*Math.cos(g) - 0.032077*Math.sin(g) - 0.014615*Math.cos(2*g) - 0.040849*Math.sin(2*g));
+  const dec = 0.006918 - 0.399912*Math.cos(g) + 0.070257*Math.sin(g) - 0.006758*Math.cos(2*g) + 0.000907*Math.sin(2*g) - 0.002697*Math.cos(3*g) + 0.00148*Math.sin(3*g);
+  const ha = Math.acos(Math.min(1, Math.max(-1, Math.cos(90.833*r) / (Math.cos(lat*r) * Math.cos(dec)) - Math.tan(lat*r) * Math.tan(dec)))) / r;
+  return [720 - 4*(lon + ha) - eq, 720 - 4*(lon - ha) - eq];
+}
+function leerHorario(d){
+  const tramos = [];
+  let mes = null;
+  for (const parte of d.split(',')){
+    const t = { dias:[], semana:null, horas:[] };
+    for (const tok of parte.trim().split(/\s+/).filter(Boolean)){
+      let m;
+      if (tok in MESES) mes = MESES[tok];
+      else if (tok === 'DAILY' || tok === 'H24') { if (tok === 'H24') t.horas.push(['0000','2359']); }
+      else if ((m = tok.match(/^(\d{1,2})(?:-(\d{1,2}))?$/))){ for (let x = +m[1]; x <= +(m[2] || m[1]); x++) t.dias.push([mes, x]); }
+      else if ((m = tok.match(/^(MON|TUE|WED|THU|FRI|SAT|SUN)(?:-(MON|TUE|WED|THU|FRI|SAT|SUN))?$/))){
+        t.semana = t.semana || [];
+        for (let i = DIAS[m[1]]; ; i = (i + 1) % 7){ t.semana.push(i); if (i === DIAS[m[2] || m[1]]) break; }
+      }
+      else if ((m = tok.match(/^(\d{4}|SR)-(\d{4}|SS)$/))) t.horas.push([m[1], m[2]]);
+      else return null;
+    }
+    if (!t.horas.length) t.horas.push(['0000','2359']);
+    tramos.push(t);
   }
-  const hIni = +m[6].slice(0,2) * 60 + +m[6].slice(2), hFin = +m[7].slice(0,2) * 60 + +m[7].slice(2);
-  // se comprueba cada media hora del vuelo
-  for (let t = v.ini.getTime(); t <= v.fin.getTime(); t += 30 * 60e3){
-    const x = new Date(t), min = x.getUTCHours() * 60 + x.getUTCMinutes();
-    if (dias && !dias.includes(x.getUTCDay())) continue;
-    if (hIni <= hFin ? (min >= hIni && min <= hFin) : (min >= hIni || min <= hFin)) return true;
+  return tramos;
+}
+function horarioActivo(d, v){
+  d = String(d || '').toUpperCase().replace(/\s*-\s*/g, '-').trim();
+  if (!d) return true;                       // sin horario: activo toda la vigencia
+  const tramos = leerHorario(d);
+  if (!tramos) return null;
+  const p = punto || [40.4, -3.7];
+  const minuto = (x, sol, i) => x === 'SR' || x === 'SS' ? sol[i] : +x.slice(0,2) * 60 + +x.slice(2);
+  // se comprueba cada 15 minutos del vuelo
+  for (let t = v.ini.getTime(); t <= v.fin.getTime(); t += 15 * 60e3){
+    const x = new Date(t), min = x.getUTCHours() * 60 + x.getUTCMinutes(), sol = solUTC(x, p[0], p[1]);
+    for (const tr of tramos){
+      if (tr.dias.length && !tr.dias.some(([ms, dd]) => dd === x.getUTCDate() && (ms === null || ms === x.getUTCMonth()))) continue;
+      if (tr.semana && !tr.semana.includes(x.getUTCDay())) continue;
+      for (const [a, b] of tr.horas){
+        const hIni = minuto(a, sol, 0), hFin = minuto(b, sol, 1);
+        if (hIni <= hFin ? (min >= hIni && min <= hFin) : (min >= hIni || min <= hFin)) return true;
+      }
+    }
   }
   return false;
+}
+// Horario del NOTAM en castellano y en hora de España del día del vuelo
+const MES_ES = { JAN:'ene', FEB:'feb', MAR:'mar', APR:'abr', MAY:'may', JUN:'jun', JUL:'jul', AUG:'ago', SEP:'sep', OCT:'oct', NOV:'nov', DEC:'dic' };
+const DIA_ES = { MON:'lun', TUE:'mar', WED:'mié', THU:'jue', FRI:'vie', SAT:'sáb', SUN:'dom' };
+function horarioEnEspanol(d){
+  if (!d) return 'todo el día';
+  const v = ventanaVuelo(), ref = v ? v.ini : new Date();
+  const off = -ref.getTimezoneOffset();
+  const local = hhmm => { const m = ((+hhmm.slice(0,2) * 60 + +hhmm.slice(2) + off) % 1440 + 1440) % 1440; return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`; };
+  // «NOV 01-22 28-30» → «del 1 al 22 y del 28 al 30 de nov»
+  const y = l => l.length > 1 ? `${l.slice(0, -1).join(', ')} y ${l[l.length - 1]}` : l[0];
+  const dias = (mes, lista) => {
+    const l = lista.trim().split(/\s+/).map(x => { const [a, b] = x.split('-').map(Number); return b ? `del ${a} al ${b}` : `${a}`; });
+    return `${mes ? '' : 'días '}${y(l)}${mes ? ` de ${MES_ES[mes]}` : ''}`;
+  };
+  return String(d).toUpperCase().replace(/\s*-\s*/g, '-').split(/\s*,\s*/).map(tramo => tramo
+    .replace(/^(?:(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+)?((?:\d{1,2}(?:-\d{1,2})?\s+)+)/, (_, mes, l) => dias(mes, l) + ' ')
+    .replace(/\b(\d{4}|SR)-(\d{4}|SS)\b/g, (_, a, b) => a === 'SR' && b === 'SS' ? 'de sol a sol'
+      : `de ${a === 'SR' ? 'la salida del sol' : local(a)} a ${b === 'SS' ? 'la puesta del sol' : local(b)}`)
+    .replace(/\b(de sol a sol|de \S+ a [^,]+?)\s+(?=de )/g, '$1 y ')
+    .replace(/\bH24\b/g, 'las 24 h').replace(/\bDAILY\b/g, 'todos los días')
+    .replace(/\b(MON|TUE|WED|THU|FRI|SAT|SUN)\b/g, m => DIA_ES[m])
+  ).join('; ') + ' (hora de España)';
 }
 
 function analizarNotam(a, h, suelo){
@@ -478,11 +606,11 @@ function analizarNotam(a, h, suelo){
   let estado, frase;
   if (altura === 'no'){ estado = 'no'; frase = `No te afecta: empieza a ${textoAltura(bajo)}${!bajo.sobreSuelo && typeof suelo === 'number' ? ` (unos ${Math.round(bajo.m - suelo)} m sobre el suelo aquí)` : ''}, por encima de tus ${h} m.`; }
   else if (fecha === 'no'){ estado = 'no'; frase = `No está vigente el día de tu vuelo (vigencia ${a.itemBstr} → ${a.itemCstr} UTC).`; }
-  else if (fecha === 'no_horario'){ estado = 'no'; frase = `Vigente ese día pero fuera de tu horario (activo ${a.itemD} UTC).`; }
+  else if (fecha === 'no_horario'){ estado = 'no'; frase = `Vigente ese día pero fuera de tu horario: solo está activo ${horarioEnEspanol(a.itemD)}.`; }
   else if (altura === 'quiza'){ estado = 'quiza'; frase = `Puede afectarte según la altitud del terreno: empieza ${textoAltura(bajo)}.`; }
-  else if (fecha === 'revisar'){ estado = 'quiza'; frase = `Vigente ese día; revisa su horario (${a.itemD} UTC) frente al tuyo.`; }
+  else if (fecha === 'revisar'){ estado = 'quiza'; frase = `Vigente ese día; revisa su horario frente al tuyo: ${horarioEnEspanol(a.itemD)}.`; }
   else if (fecha === 'sin_fecha'){ estado = 'quiza'; frase = 'Pon la fecha del vuelo para saber si está activo.'; }
-  else { estado = 'afecta'; frase = `TE AFECTA: activo durante tu vuelo y ${alturas}.`; }
+  else { estado = 'afecta'; frase = `TE AFECTA: activo durante tu vuelo y ${alturas}${a.itemD ? `. Horario: ${horarioEnEspanol(a.itemD)}` : ''}.`; }
   return { estado, frase, alturas };
 }
 
@@ -492,7 +620,7 @@ function construirZona(c, a, h, suelo){
     notam = analizarNotam(a, h, suelo);
     nombre = `${a.notamId || ''}${a.areaSactaName ? ` (${a.areaSactaName})` : ''}`.trim();
     html = `<p><b>${notam.frase}</b></p>`
-      + `<p>Vigencia: ${a.itemBstr||'?'} → ${a.itemCstr||'?'} (UTC)${a.itemD?` · Horario: ${a.itemD} UTC`:''}</p>`
+      + `<p>Vigencia: ${a.itemBstr||'?'} → ${a.itemCstr||'?'} (UTC)${a.itemD?` · Horario: ${horarioEnEspanol(a.itemD)} [${a.itemD} UTC]`:''}</p>`
       + `<p>Alturas: ${notam.alturas} (${a.FLYING_LEVELS_DESC || `${a.itemF||''} / ${a.itemG||''}`})</p>`
       + `<p>${a.itemE || ''}</p>`;
   } else {
@@ -504,7 +632,10 @@ function construirZona(c, a, h, suelo){
   if (notam) nivel = { afecta:'rojo', quiza:'naranja', no:'info' }[notam.estado];
   else if (nivel==='auto') nivel = /no\s+permitido|prohibid[oa]\s+el\s+vuelo|NO permitted/i.test(textoPlano) ? 'rojo' : 'naranja';
   if (c.titulo==='Entorno urbano') nombre = '';
-  return { c, a, html, nombre, nivel, notam, correos: correosDe(a, html), clave: c.url + '|' + (a.notamId || textoPlano.slice(0,300)) };
+  const z = { c, a, html, nombre, nivel, notam };
+  z.contactos = contactosDe(z);
+  z.correos = z.contactos.filter(k => k.tipo === 'email').map(k => k.valor);
+  return { ...z, clave: c.url + '|' + (a.notamId || textoPlano.slice(0,300)) };
 }
 
 // Frase clave de una zona para el resumen: lo que ENAIRE marca en rojo o en negrita
@@ -607,15 +738,20 @@ function pintar(zonas, fallos, p, h, foto, altas, suelo){
     t.appendChild(document.createTextNode(z.c.titulo + (z.nombre ? ` — ${z.nombre}` : '')));
     d.appendChild(t);
     const tx = limpiar(z.html); tx.className='txt'; d.appendChild(tx);
-    if (z.correos.length){
+    if (z.contactos.length){
       const c = document.createElement('div'); c.className='correos';
-      c.innerHTML = `<div class="em">Contacto: ${z.correos.join(', ')}</div>`;
+      c.innerHTML = '<div class="em">Contactos</div>';
+      pintarContactos(z.contactos, c);
+      d.appendChild(c);
+    }
+    if (z.correos.length){
+      const c = d.querySelector('.correos');
       const ac = document.createElement('div'); ac.className='acciones';
       const b1 = document.createElement('button'); b1.textContent='Preparar correo';
       b1.onclick = () => abrirCorreo(z, p, h, foto);
       const b2 = document.createElement('button'); b2.className='sec'; b2.textContent='Copiar texto';
       b2.onclick = async () => { const m = redactar(z, p, h, foto); try{ await navigator.clipboard.writeText(`Para: ${z.correos.join(', ')}\nAsunto: ${m.asunto}\n\n${m.cuerpo}`); b2.textContent='Copiado'; }catch(e){ b2.textContent='No se pudo copiar'; } setTimeout(()=>b2.textContent='Copiar texto',2000); };
-      ac.append(b1, b2); c.appendChild(ac); d.appendChild(c);
+      ac.append(b1, b2); c.appendChild(ac);
     }
     R.appendChild(d);
   });
@@ -663,12 +799,21 @@ function pintarResumen(zonas, altas, h, fallos, suelo){
   }
   // resto de zonas que piden algo
   resto.filter(z => z.nivel !== 'info' || /natural|aves/i.test(z.c.titulo)).forEach(z => {
-    const contacto = z.correos.length ? ` Contacto: ${z.correos.join(', ')}.` : '';
-    li(`${z.c.titulo}${z.nombre ? ` (${z.nombre})` : ''}: ${fraseClave(z)}${z.nivel === 'info' ? '' : contacto}`, z.nivel === 'info' ? '' : z.nivel);
+    li(`${z.c.titulo}${z.nombre ? ` (${z.nombre})` : ''}: ${fraseClave(z)}`, z.nivel === 'info' ? '' : z.nivel);
   });
   if (altas.length) li(`${altas.length} zona(s) muy por encima de tu vuelo: no te afectan.`, 'ok');
   if (typeof suelo !== 'number') li('No se pudo saber la altitud del terreno: las zonas medidas desde el mar se han tratado con prudencia.', 'naranja');
   if (fallos) li(`Atención: ${fallos} capa(s) de ENAIRE no respondieron; el resumen puede estar incompleto.`, 'rojo');
+  // todos los contactos juntos, con para qué sirve cada uno (los de NOTAM que no te afectan no hacen falta)
+  const todos = [], vistos = new Set();
+  zonas.filter(z => !z.notam || z.notam.estado !== 'no').forEach(z => z.contactos.forEach(k => {
+    if (vistos.has(k.valor)) return; vistos.add(k.valor);
+    todos.push({ ...k, zona: z.c.titulo + (z.nombre ? ` (${z.nombre})` : '') });
+  }));
+  if (todos.length){
+    const h3 = document.createElement('h3'); h3.textContent = 'Contactos y páginas'; s.appendChild(h3);
+    pintarContactos(todos, s, true);
+  }
   $('resultado').appendChild(s);
 }
 
