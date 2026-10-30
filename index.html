@@ -1257,6 +1257,13 @@ function pintarResumen(zonas, altas, h, fallos, suelo){
     const a = document.createElement('a'); a.className = 'btn sec'; a.target = '_blank'; a.rel = 'noopener';
     a.href = 'https://sede.interior.gob.es/portal/sede/tramites?codAgrupacion=Drones'; a.textContent = 'Abrir la sede';
     ac.append(b, a); s.appendChild(ac);
+    // el mismo botón arriba del resultado, para no tener que bajar hasta el final
+    const arriba = document.createElement('div'); arriba.className = 'acciones';
+    const b2 = document.createElement('button'); b2.textContent = b.textContent;
+    b2.onclick = () => enviarComunicado(b2, zu, h, pLugar);
+    arriba.appendChild(b2);
+    const cabecera = $('resultado').querySelector('.resumen');
+    if (cabecera) cabecera.after(arriba);
   }
   $('resultado').appendChild(s);
 }
