@@ -67,6 +67,11 @@ button:disabled{opacity:.5;cursor:default}
 .campo{position:relative}
 .campo input{padding-right:48px}
 .borrar{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:40px;height:40px;padding:0;border-radius:50%;background:transparent;color:var(--muted);font-size:1.1rem}
+.barraMapa{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.barraMapa .info{flex:1 1 160px;font-size:.88rem;color:var(--muted)}
+.barraMapa.activa{padding:8px 10px;border-radius:10px;background:var(--naranja-bg)}
+.barraMapa.activa .info{color:var(--naranja);font-weight:600}
+#mapa.dibujando{cursor:crosshair}
 #mapa{height:360px;border-radius:12px;margin-top:12px;border:1px solid var(--line)}
 .punto{font-size:.88rem;color:var(--muted);margin-top:8px;word-break:break-word}
 .ayuda{font-size:.85rem;color:var(--muted);margin-top:8px}
@@ -223,6 +228,13 @@ details summary{cursor:pointer;font-weight:700}
     </div>
     <div class="archivo" id="archivo" hidden><span id="txtArchivo"></span><button id="btnQuitarKml" class="sec" type="button">Quitar</button></div>
     <div id="msgEntrada"></div>
+    <div class="barraMapa" id="barraMapa">
+      <button id="btnDibujar" type="button" class="sec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 5l7 4 4 9z"/><circle cx="4" cy="18" r="1.5"/><circle cx="9" cy="5" r="1.5"/><circle cx="16" cy="9" r="1.5"/><circle cx="20" cy="18" r="1.5"/></svg>Dibujar zona</button>
+      <span class="info" id="infoDibujo">o toca el mapa para elegir un punto</span>
+      <button id="btnDeshacer" type="button" class="sec" hidden>Deshacer</button>
+      <button id="btnTerminar" type="button" hidden>Terminar</button>
+      <button id="btnCancelarDibujo" type="button" class="sec" hidden>Cancelar</button>
+    </div>
     <div id="mapa"></div>
     <div class="punto" id="txtPunto">Toca el mapa para elegir el punto de vuelo.</div>
   </section>
@@ -360,6 +372,7 @@ const calles = L.tileLayer(ESRI + 'World_Street_Map/MapServer/tile/{z}/{y}/{x}',
   { maxZoom:20, maxNativeZoom:19, attribution:'© Esri, HERE, OpenStreetMap' });
 L.control.layers({ 'Ortofoto':orto, 'Calles':calles }, null, { collapsed:false }).addTo(mapa);
 mapa.on('click', e => {
+  if (dibujo){ ponerEsquina(e.latlng); return; }
   const p = [e.latlng.lat, e.latlng.lng];
   quitarZona();
   $('entrada').value = `${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
@@ -405,7 +418,10 @@ async function cargarKml(fich){
     if (!k) throw new Error('El KMZ no tiene ningún KML dentro.');
     texto = await k.async('string');
   } else texto = await fich.text();
-  const g = leerKml(texto);
+  usarZona(leerKml(texto), fich.name);
+}
+// zona de vuelo (de un KML/KMZ o dibujada en el mapa): se pinta y se consulta entera a ENAIRE
+function usarZona(g, fichero){
   const n = g.anillos.length + g.lineas.length + g.puntos.length;
   if (!n) throw new Error('No encuentro puntos, líneas ni polígonos en el archivo.');
   const sr = { wkid:4326 };
@@ -419,7 +435,7 @@ async function cargarKml(fich){
   const muestras = [centro, ...vertices.filter((_, i) => i % paso === 0).map(v => [v[1], v[0]])];
   const partes = [g.anillos.length && `${g.anillos.length} polígono(s)`, g.lineas.length && `${g.lineas.length} línea(s)`, g.puntos.length && `${g.puntos.length} punto(s)`].filter(Boolean).join(', ');
   quitarZona();
-  zonaVuelo = { nombre: g.nombre || fich.name, fichero: fich.name, consultas, centro, muestras, partes, vertices, anillo: g.anillos[0] || null };
+  zonaVuelo = { nombre: g.nombre || fichero, fichero, consultas, centro, muestras, partes, vertices, anillo: g.anillos[0] || null };
   const estilo = { color:'#ffd400', weight:3, fillColor:'#ffd400', fillOpacity:.2 };
   capaKml = L.featureGroup([
     ...g.anillos.map(r => L.polygon(r.map(c => [c[1], c[0]]), estilo)),
@@ -440,6 +456,46 @@ function quitarZona(){
   $('archivo').hidden = true; $('fichKml').value = '';
 }
 $('btnKml').onclick = () => $('fichKml').click();
+
+// ---------- dibujar la zona en el mapa: se toca una esquina tras otra ----------
+let dibujo = null;
+function pintarDibujo(){
+  const n = dibujo.esquinas.length;
+  dibujo.capa.clearLayers();
+  if (n >= 3) L.polygon(dibujo.esquinas, { color:'#ffd400', weight:3, fillColor:'#ffd400', fillOpacity:.2, dashArray:'6 6' }).addTo(dibujo.capa);
+  else if (n === 2) L.polyline(dibujo.esquinas, { color:'#ffd400', weight:3, dashArray:'6 6' }).addTo(dibujo.capa);
+  dibujo.esquinas.forEach(c => L.circleMarker(c, { radius:6, color:'#0d4f8b', weight:2, fillColor:'#ffd400', fillOpacity:1 }).addTo(dibujo.capa));
+  $('infoDibujo').textContent = n < 3 ? `Toca el mapa para marcar las esquinas (${n} de mínimo 3)` : `${n} esquinas: toca para añadir más o pulsa Terminar`;
+  $('btnDeshacer').hidden = !n; $('btnTerminar').disabled = n < 3;
+}
+function modoDibujo(activo){
+  $('barraMapa').classList.toggle('activa', activo);
+  $('mapa').classList.toggle('dibujando', activo);
+  $('btnDibujar').hidden = activo; $('btnTerminar').hidden = !activo; $('btnCancelarDibujo').hidden = !activo;
+  if (!activo){ $('btnDeshacer').hidden = true; $('infoDibujo').textContent = 'o toca el mapa para elegir un punto'; }
+}
+function ponerEsquina(ll){ dibujo.esquinas.push([ll.lat, ll.lng]); pintarDibujo(); }
+function acabarDibujo(){
+  if (dibujo){ mapa.removeLayer(dibujo.capa); dibujo = null; }
+  modoDibujo(false);
+}
+$('btnDibujar').onclick = () => {
+  if (marcador){ mapa.removeLayer(marcador); marcador = null; }
+  quitarZona();
+  dibujo = { esquinas:[], capa:L.layerGroup().addTo(mapa) };
+  modoDibujo(true); pintarDibujo();
+  if (mapa.getZoom() < 14 && punto) mapa.setView(punto, 16);
+};
+$('btnDeshacer').onclick = () => { dibujo.esquinas.pop(); pintarDibujo(); };
+$('btnCancelarDibujo').onclick = acabarDibujo;
+$('btnTerminar').onclick = () => {
+  if (!dibujo || dibujo.esquinas.length < 3) return;
+  const anillo = dibujo.esquinas.map(([la, lo]) => [lo, la]);
+  anillo.push(anillo[0]);
+  acabarDibujo();
+  $('entrada').value = '';
+  usarZona({ anillos:[anillo], lineas:[], puntos:[], nombre:'Zona dibujada' }, 'zona-dibujada.kml');
+};
 $('fichKml').onchange = async () => {
   const f = $('fichKml').files[0]; if (!f) return;
   avisoInfo(`Leyendo ${f.name}…`);
