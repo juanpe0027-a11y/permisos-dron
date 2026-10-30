@@ -341,7 +341,7 @@ async function cargarKml(fich){
   const muestras = [centro, ...vertices.filter((_, i) => i % paso === 0).map(v => [v[1], v[0]])];
   const partes = [g.anillos.length && `${g.anillos.length} polígono(s)`, g.lineas.length && `${g.lineas.length} línea(s)`, g.puntos.length && `${g.puntos.length} punto(s)`].filter(Boolean).join(', ');
   quitarZona();
-  zonaVuelo = { nombre: g.nombre || fich.name, fichero: fich.name, consultas, centro, muestras, partes };
+  zonaVuelo = { nombre: g.nombre || fich.name, fichero: fich.name, consultas, centro, muestras, partes, vertices };
   const estilo = { color:'#ffd400', weight:3, fillColor:'#ffd400', fillOpacity:.2 };
   capaKml = L.featureGroup([
     ...g.anillos.map(r => L.polygon(r.map(c => [c[1], c[0]]), estilo)),
@@ -818,6 +818,7 @@ function limiteAltura(texto, h, suelo){
 // La tarjeta de entorno urbano dice si el punto lo es y, si lo es, pide la comunicación al Ministerio
 function marcarUrbano(z, u){
   z.urbano = u ? u.urbano : null;
+  z.motivoUrbano = u ? u.motivo : '';
   const cab = !u ? '<p class="pasa"><b>⚠️ No se pudo consultar el Catastro: mira tú si el sitio es entorno urbano (y márcalo arriba).</b></p>'
     : u.urbano ? `<p class="pasa"><b>🏘️ SÍ es entorno urbano (${u.motivo}). Comunica el vuelo al Ministerio del Interior con 5 días de antelación.</b></p>`
     : `<p class="cumple"><b>✅ NO es entorno urbano (${u.motivo}). No hace falta comunicarlo al Ministerio del Interior.</b></p>`;
@@ -1108,7 +1109,80 @@ function pintarResumen(zonas, altas, h, fallos, suelo){
     const h3 = document.createElement('h3'); h3.textContent = 'Contactos y páginas'; s.appendChild(h3);
     pintarContactos(todos, s, true);
   }
+  // comunicado al Ministerio del Interior: los datos del vuelo, listos para rellenar el formulario en el ordenador
+  const zu = zonas.find(z => z.c.titulo === 'Entorno urbano');
+  if (zu && zu.urbano !== false){
+    const pLugar = lugarDe(punto);
+    const h3 = document.createElement('h3'); h3.textContent = 'Comunicado al Ministerio del Interior'; s.appendChild(h3);
+    s.insertAdjacentHTML('beforeend', '<p class="punto">Manda los datos del vuelo al ordenador (WhatsApp, correo o tu chat con Claude) y rellena allí el formulario de la sede electrónica, entrando con Cl@ve o certificado.</p>');
+    const ac = document.createElement('div'); ac.className = 'acciones';
+    const b = document.createElement('button'); b.textContent = '📨 Enviar datos del comunicado al PC';
+    b.onclick = () => enviarComunicado(b, zu, h, pLugar);
+    const a = document.createElement('a'); a.className = 'btn sec'; a.target = '_blank'; a.rel = 'noopener';
+    a.href = 'https://sede.interior.gob.es/portal/sede/tramites?codAgrupacion=Drones'; a.textContent = 'Abrir la sede';
+    ac.append(b, a); s.appendChild(ac);
+  }
   $('resultado').appendChild(s);
+}
+
+// ---------- comunicado al Ministerio del Interior ----------
+// Los datos van en el orden del formulario de la sede («Operación de aeronaves no tripuladas»).
+async function lugarDe(p){
+  try {
+    const d = await (await fetch(`https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location=${p[1]},${p[0]}&langCode=es&f=json`)).json();
+    const a = d.address || {};
+    return { calle: a.Address || '', cp: a.Postal || '', poblacion: a.City || a.Neighborhood || '', provincia: a.Subregion || '', ccaa: a.Region || '' };
+  } catch(e){ return null; }
+}
+function metrosEntre(a, b){
+  const r = Math.PI / 180, x = Math.sin((b[0]-a[0])*r/2)**2 + Math.cos(a[0]*r) * Math.cos(b[0]*r) * Math.sin((b[1]-a[1])*r/2)**2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(x));
+}
+function textoComunicado(zu, h, l){
+  const p = punto, hi = $('horaIni').value, hf = $('horaFin').value, f = $('fecha').value;
+  const min = hi && hf ? ((+hf.slice(0,2) * 60 + +hf.slice(3)) - (+hi.slice(0,2) * 60 + +hi.slice(3)) + 1440) % 1440 : null;
+  const dur = min == null ? '[por concretar]' : [Math.floor(min / 60) && `${Math.floor(min / 60)} h`, min % 60 && `${min % 60} min`].filter(Boolean).join(' ') || '0 min';
+  // radio: el vértice más lejano del centro, redondeado a 10 m; con un punto suelto, los 100 m del apartado a)
+  const radio = zonaVuelo ? Math.ceil(Math.max(...zonaVuelo.vertices.map(v => metrosEntre(p, [v[1], v[0]]))) / 10) * 10 : 100;
+  const paso = zonaVuelo ? Math.max(1, Math.ceil(zonaVuelo.vertices.length / 40)) : 1;
+  const v = (k, falta) => $(k).value.trim() || falta;
+  return [
+    'COMUNICADO AL MINISTERIO DEL INTERIOR (vuelo en entorno urbano)',
+    '',
+    'OPERACIÓN',
+    `- Tipo de operación: ${$('finalidad').value.trim() || ($('foto').checked ? 'Grabación de imágenes (fotografía y vídeo)' : '[por concretar]')}`,
+    `- Fecha de la operación: ${f ? f.split('-').reverse().join('/') : '[por concretar]'}`,
+    `- Lugar (población, provincia y CCAA): ${l ? [l.poblacion, l.provincia, l.ccaa].filter(Boolean).join(', ') : '[por concretar]'}`,
+    `- Hora prevista de inicio (hora local): ${hi || '[por concretar]'}`,
+    `- Hora prevista de finalización (hora local): ${hf || '[por concretar]'}`,
+    `- Duración total prevista: ${dur}`,
+    `- Delimitación del lugar: ${l && l.calle ? `${l.calle}${l.cp ? `, ${l.cp}` : ''}` : '[calle y número]'}${zonaVuelo ? ` · zona «${zonaVuelo.nombre}» (${zonaVuelo.fichero})` : ''}`,
+    `- Punto central (WGS-84, DMS): ${aDms(p[0],'N','S')} ${aDms(p[1],'E','W')}`,
+    `- Punto central (decimal): ${p[0].toFixed(6)}, ${p[1].toFixed(6)}`,
+    `- Radio en metros: ${radio}`,
+    `- Zona de población: ${zu.motivoUrbano || 'entorno urbano'}`,
+    `- Altura prevista de la operación: ${h} m sobre el terreno`,
+    `- Mapa: ${enlaceMaps(p)}`,
+    zonaVuelo ? `- Vértices de la zona (lat, lon): ${zonaVuelo.vertices.filter((_, i) => i % paso === 0).map(c => `${c[1].toFixed(6)}, ${c[0].toFixed(6)}`).join(' | ')}` : null,
+    '',
+    'OPERADOR Y DRON',
+    `- Nombre: ${v('dNombre', '[nombre]')}`,
+    `- Teléfono: ${v('dTel', '[teléfono]')}`,
+    `- Nº de registro de operador: ${v('dOperador', '[nº de operador]')}`,
+    `- Dron (modelo y clase): ${v('dDron', '[dron]')}`,
+    `- Categoría: ${$('dCategoria').value}`,
+  ].filter(x => x !== null).join('\n');
+}
+async function enviarComunicado(b, zu, h, pLugar){
+  const antes = b.textContent;
+  const texto = textoComunicado(zu, h, await pLugar);
+  const fin = t => { b.textContent = t; setTimeout(() => b.textContent = antes, 2500); };
+  if (navigator.share){
+    try { await navigator.share({ title:'Comunicado Interior', text:texto }); return; }
+    catch(e){ if (e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(texto); fin('Copiado: pégalo en el PC'); }
+  catch(e){ fin('No se pudo copiar'); }
 }
 
 // ---------- correos ----------
