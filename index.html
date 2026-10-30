@@ -204,6 +204,7 @@ details summary{cursor:pointer;font-weight:700}
       <div class="row">
         <div><label for="dCategoria">Categoría</label>
           <select id="dCategoria"><option>Abierta A1</option><option>Abierta A2</option><option>Abierta A3</option><option>Específica</option></select></div>
+        <div><label for="dPc">Clave del PC (comunicado a Interior)</label><input id="dPc" autocomplete="off" placeholder="Para que el PC rellene el comunicado"></div>
       </div>
     </details>
   </section>
@@ -234,7 +235,7 @@ const $ = id => document.getElementById(id);
 let punto = null, marcador = null, zonaVuelo = null, capaKml = null;
 
 // ---------- almacenamiento local (solo comodidad) ----------
-const DATOS = ['dNombre','dTel','dOperador','dDron','dCategoria','finalidad','altura'];
+const DATOS = ['dNombre','dTel','dOperador','dDron','dCategoria','dPc','finalidad','altura'];
 function guardar(){ try{ const o={}; DATOS.forEach(k=>o[k]=$(k).value); localStorage.setItem('permisos-dron',JSON.stringify(o)); }catch(e){} }
 function cargar(){ try{ const o=JSON.parse(localStorage.getItem('permisos-dron')||'{}'); DATOS.forEach(k=>{ if(o[k]) $(k).value=o[k]; }); if(!o.dNombre) $('detDatos').open=true; }catch(e){} }
 DATOS.forEach(k=>$(k).addEventListener('change',guardar));
@@ -1114,9 +1115,11 @@ function pintarResumen(zonas, altas, h, fallos, suelo){
   if (zu && zu.urbano !== false){
     const pLugar = lugarDe(punto);
     const h3 = document.createElement('h3'); h3.textContent = 'Comunicado al Ministerio del Interior'; s.appendChild(h3);
-    s.insertAdjacentHTML('beforeend', '<p class="punto">Manda los datos del vuelo al ordenador (WhatsApp, correo o tu chat con Claude) y rellena allí el formulario de la sede electrónica, entrando con Cl@ve o certificado.</p>');
+    s.insertAdjacentHTML('beforeend', $('dPc').value.trim()
+      ? '<p class="punto">Tu PC abrirá la sede y rellenará el formulario con estos datos: entra en remoto, pon tu Cl@ve, revísalo y fírmalo.</p>'
+      : '<p class="punto">Manda los datos del vuelo al ordenador (WhatsApp, correo…) y rellena allí el formulario de la sede electrónica, entrando con Cl@ve o certificado.</p>');
     const ac = document.createElement('div'); ac.className = 'acciones';
-    const b = document.createElement('button'); b.textContent = '📨 Enviar datos del comunicado al PC';
+    const b = document.createElement('button'); b.textContent = $('dPc').value.trim() ? '🏛️ Realizar comunicado en el PC' : '📨 Enviar datos del comunicado al PC';
     b.onclick = () => enviarComunicado(b, zu, h, pLugar);
     const a = document.createElement('a'); a.className = 'btn sec'; a.target = '_blank'; a.rel = 'noopener';
     a.href = 'https://sede.interior.gob.es/portal/sede/tramites?codAgrupacion=Drones'; a.textContent = 'Abrir la sede';
@@ -1177,6 +1180,18 @@ async function enviarComunicado(b, zu, h, pLugar){
   const antes = b.textContent;
   const texto = textoComunicado(zu, h, await pLugar);
   const fin = t => { b.textContent = t; setTimeout(() => b.textContent = antes, 2500); };
+  // con la clave del PC, los datos van al buzón y el PC abre la sede y rellena el formulario
+  const clave = $('dPc').value.trim();
+  if (clave){
+    b.disabled = true; b.textContent = 'Enviando al PC…';
+    try {
+      const r = await (await fetch(TRADUCTOR, { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify({ clave, datos:{ texto, dron: $('dDron').value.trim() } }) })).json();
+      if (r.error) throw new Error(r.error);
+      b.disabled = false;
+      fin('✅ Enviado: entra en el PC y pon tu Cl@ve');
+    } catch(e){ b.disabled = false; fin(`No se pudo enviar (${e.message})`); }
+    return;
+  }
   if (navigator.share){
     try { await navigator.share({ title:'Comunicado Interior', text:texto }); return; }
     catch(e){ if (e.name === 'AbortError') return; }
@@ -1226,6 +1241,12 @@ function abrirCorreo(z, p, h, foto){
 }
 
 cargar();
+(() => {
+  const u = new URL(location.href), c = u.searchParams.get('pc');
+  if (!c) return;
+  $('dPc').value = c; guardar();
+  u.searchParams.delete('pc'); history.replaceState(null, '', u);
+})();
 (function(){ const d=new Date(); d.setDate(d.getDate()+7); $('fecha').value = d.toISOString().slice(0,10); })();
 // ?p=lat,lon o lo que llega al compartir desde otra app (Web Share Target)
 const qs = new URLSearchParams(location.search);
