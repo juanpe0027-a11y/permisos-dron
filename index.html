@@ -70,6 +70,8 @@ button:disabled{opacity:.5;cursor:default}
 #mapa{height:360px;border-radius:12px;margin-top:12px;border:1px solid var(--line)}
 .punto{font-size:.88rem;color:var(--muted);margin-top:8px;word-break:break-word}
 .ayuda{font-size:.85rem;color:var(--muted);margin-top:8px}
+.nuevo{margin-top:12px;padding:12px 14px;border:1px dashed var(--accent-2);border-radius:12px;background:var(--accent-suave)}
+.nuevo b{display:block;margin-bottom:2px}
 .archivo{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--accent-suave);color:var(--accent);font-size:.9rem;font-weight:600}
 .archivo span{flex:1;word-break:break-word}
 .archivo button{padding:6px 10px;font-size:.85rem}
@@ -159,6 +161,48 @@ details summary{cursor:pointer;font-weight:700}
     <label for="finalidad">Finalidad del vuelo</label>
     <input id="finalidad" placeholder="Ej.: fotografía y vídeo de la zona">
     <label class="check"><input id="foto" type="checkbox" checked> Vuelo fotográfico / vídeo</label>
+    <div class="row">
+      <div><label for="dDron">Dron</label><select id="dDron"></select></div>
+      <div><label for="dPiloto">Piloto</label><select id="dPiloto"></select></div>
+    </div>
+    <div class="nuevo" id="nuevoDron" hidden>
+      <b>Dron nuevo</b><span class="punto">Se guarda en este móvil para los próximos vuelos.</span>
+      <div class="row">
+        <div><label for="ndModelo">Modelo *</label><input id="ndModelo" placeholder="Ej.: Mavic 3 Pro"></div>
+        <div><label for="ndFabricante">Fabricante</label><input id="ndFabricante" value="DJI"></div>
+      </div>
+      <div class="row">
+        <div><label for="ndSerie">Nº de serie *</label><input id="ndSerie" autocomplete="off"></div>
+        <div><label for="ndClase">Tipo</label><select id="ndClase"><option>Rotor</option><option>Ala fija</option><option>Hibrido</option></select></div>
+      </div>
+      <div class="row">
+        <div><label for="ndMtom">Peso máx. (g) *</label><input id="ndMtom" type="number" min="1"></div>
+        <div><label for="ndAutonomia">Autonomía (min) *</label><input id="ndAutonomia" type="number" min="1"></div>
+        <div><label for="ndColor">Color</label><input id="ndColor" value="Gris"></div>
+      </div>
+      <div class="acciones"><button id="btnGuardarDron" type="button">Guardar dron</button><button id="btnCancelarDron" type="button" class="sec">Cancelar</button></div>
+    </div>
+    <div class="nuevo" id="nuevoPiloto" hidden>
+      <b>Piloto nuevo</b><span class="punto">Se guarda en este móvil. Por defecto vuelas tú.</span>
+      <div class="row">
+        <div><label for="npDoc">DNI / NIE *</label><input id="npDoc" autocomplete="off"></div>
+        <div><label for="npNombre">Nombre *</label><input id="npNombre"></div>
+      </div>
+      <div class="row">
+        <div><label for="npApe1">Primer apellido *</label><input id="npApe1"></div>
+        <div><label for="npApe2">Segundo apellido</label><input id="npApe2"></div>
+      </div>
+      <div class="row">
+        <div><label for="npCert">Certificado de piloto *</label><input id="npCert" placeholder="Ej.: A1/A3-A2-STS"></div>
+        <div><label for="npForm">Formación práctica *</label><input id="npForm" placeholder="Ej.: A1/A3"></div>
+      </div>
+      <div class="row">
+        <div><label for="npSeguro">Seguro</label><input id="npSeguro" placeholder="Ej.: Responsabilidad civil"></div>
+        <div><label for="npEntidad">Aseguradora</label><input id="npEntidad"></div>
+        <div><label for="npFecha">Validez del seguro</label><input id="npFecha" type="date"></div>
+      </div>
+      <div class="acciones"><button id="btnGuardarPiloto" type="button">Guardar piloto</button><button id="btnCancelarPiloto" type="button" class="sec">Cancelar</button></div>
+    </div>
     <div><label for="urbano">Entorno urbano</label><select id="urbano"><option value="auto">Automático (IGN y Catastro)</option><option value="si">Sí, es entorno urbano</option><option value="no">No, es campo, playa natural…</option></select></div>
   </section>
 
@@ -199,7 +243,6 @@ details summary{cursor:pointer;font-weight:700}
       </div>
       <div class="row">
         <div><label for="dOperador">Nº de operador UAS</label><input id="dOperador" placeholder="ESP…"></div>
-        <div><label for="dDron">Dron (modelo y clase)</label><input id="dDron" placeholder="Ej.: DJI Mini 4 Pro, C0"></div>
       </div>
       <div class="row">
         <div><label for="dCategoria">Categoría</label>
@@ -235,7 +278,41 @@ const $ = id => document.getElementById(id);
 let punto = null, marcador = null, zonaVuelo = null, capaKml = null;
 
 // ---------- almacenamiento local (solo comodidad) ----------
-const DATOS = ['dNombre','dTel','dOperador','dDron','dCategoria','dPc','finalidad','altura'];
+const DATOS = ['dNombre','dTel','dOperador','dDron','dPiloto','dCategoria','dPc','finalidad','altura'];
+
+// ---------- drones y pilotos guardados en el móvil ----------
+const DRONES_BASE = ['Mavic 3 Pro','Mini 5','Mini 3','Air S2','Matrice 350 RTK','Matrice 4 RTK','Mavic 2 Dual','Avata','Mavic 4'];
+function leerLista(k){ try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch(e){ return []; } }
+function guardarLista(k, l){ try { localStorage.setItem(k, JSON.stringify(l)); } catch(e){} }
+function pintarDrones(elegido){
+  const nombres = [...new Set([...leerLista('pd-drones').map(d => d.modelo), ...DRONES_BASE])], s = $('dDron');
+  s.innerHTML = ''; nombres.forEach(n => s.add(new Option(n, n))); s.add(new Option('＋ Añadir dron nuevo…', '__nuevo'));
+  if (elegido && nombres.includes(elegido)) s.value = elegido;
+}
+function pintarPilotos(elegido){
+  const s = $('dPiloto'); s.innerHTML = '';
+  s.add(new Option(`Yo${$('dNombre').value.trim() ? ` (${$('dNombre').value.trim()})` : ''}`, 'yo'));
+  leerLista('pd-pilotos').forEach(x => s.add(new Option(`${x.nombre} ${x.ape1}`, x.doc)));
+  s.add(new Option('＋ Añadir piloto nuevo…', '__nuevo'));
+  s.value = [...s.options].some(o => o.value === elegido) && elegido !== '__nuevo' ? elegido : 'yo';
+}
+pintarDrones(); pintarPilotos();
+$('dDron').addEventListener('change', () => { $('nuevoDron').hidden = $('dDron').value !== '__nuevo'; });
+$('dPiloto').addEventListener('change', () => { $('nuevoPiloto').hidden = $('dPiloto').value !== '__nuevo'; });
+$('btnCancelarDron').onclick = () => { $('nuevoDron').hidden = true; pintarDrones(); guardar(); };
+$('btnCancelarPiloto').onclick = () => { $('nuevoPiloto').hidden = true; pintarPilotos('yo'); guardar(); };
+$('btnGuardarDron').onclick = () => {
+  const d = { modelo:$('ndModelo').value.trim(), fabricante:$('ndFabricante').value.trim() || 'DJI', serie:$('ndSerie').value.trim(), clase:$('ndClase').value, mtom:+$('ndMtom').value, autonomia:+$('ndAutonomia').value, color:$('ndColor').value.trim() || 'Gris' };
+  if (!d.modelo || !d.serie || !d.mtom || !d.autonomia) return alert('Faltan el modelo, el nº de serie, el peso o la autonomía.');
+  guardarLista('pd-drones', [d, ...leerLista('pd-drones').filter(x => x.modelo !== d.modelo)]);
+  $('nuevoDron').hidden = true; pintarDrones(d.modelo); guardar();
+};
+$('btnGuardarPiloto').onclick = () => {
+  const x = { doc:$('npDoc').value.trim().toUpperCase(), nombre:$('npNombre').value.trim(), ape1:$('npApe1').value.trim(), ape2:$('npApe2').value.trim(), cert:$('npCert').value.trim(), form:$('npForm').value.trim(), seguro:$('npSeguro').value.trim(), entidad:$('npEntidad').value.trim(), fecha:$('npFecha').value };
+  if (!x.doc || !x.nombre || !x.ape1 || !x.cert || !x.form) return alert('Faltan el documento, el nombre, el apellido, el certificado o la formación.');
+  guardarLista('pd-pilotos', [x, ...leerLista('pd-pilotos').filter(y => y.doc !== x.doc)]);
+  $('nuevoPiloto').hidden = true; pintarPilotos(x.doc); guardar();
+};
 function guardar(){ try{ const o={}; DATOS.forEach(k=>o[k]=$(k).value); localStorage.setItem('permisos-dron',JSON.stringify(o)); }catch(e){} }
 function cargar(){ try{ const o=JSON.parse(localStorage.getItem('permisos-dron')||'{}'); DATOS.forEach(k=>{ if(o[k]) $(k).value=o[k]; }); if(!o.dNombre) $('detDatos').open=true; }catch(e){} }
 DATOS.forEach(k=>$(k).addEventListener('change',guardar));
@@ -342,7 +419,7 @@ async function cargarKml(fich){
   const muestras = [centro, ...vertices.filter((_, i) => i % paso === 0).map(v => [v[1], v[0]])];
   const partes = [g.anillos.length && `${g.anillos.length} polígono(s)`, g.lineas.length && `${g.lineas.length} línea(s)`, g.puntos.length && `${g.puntos.length} punto(s)`].filter(Boolean).join(', ');
   quitarZona();
-  zonaVuelo = { nombre: g.nombre || fich.name, fichero: fich.name, consultas, centro, muestras, partes, vertices };
+  zonaVuelo = { nombre: g.nombre || fich.name, fichero: fich.name, consultas, centro, muestras, partes, vertices, anillo: g.anillos[0] || null };
   const estilo = { color:'#ffd400', weight:3, fillColor:'#ffd400', fillOpacity:.2 };
   capaKml = L.featureGroup([
     ...g.anillos.map(r => L.polygon(r.map(c => [c[1], c[0]]), estilo)),
@@ -1176,16 +1253,33 @@ function textoComunicado(zu, h, l){
     `- Categoría: ${$('dCategoria').value}`,
   ].filter(x => x !== null).join('\n');
 }
+function camposComunicado(zu, h, l){
+  const p = punto;
+  // el polígono del KML (como mucho 120 vértices); si no hay, el centro y el radio
+  const a = zonaVuelo && zonaVuelo.anillo, paso = a ? Math.max(1, Math.ceil(a.length / 120)) : 1;
+  const radio = zonaVuelo ? Math.ceil(Math.max(...zonaVuelo.vertices.map(v => metrosEntre(p, [v[1], v[0]]))) / 10) * 10 : 100;
+  const dron = $('dDron').value, pil = $('dPiloto').value;
+  return {
+    fecha: $('fecha').value, horaIni: $('horaIni').value, horaFin: $('horaFin').value, altura: h,
+    tipo: ($('finalidad').value.trim() || ($('foto').checked ? 'Fotografía y vídeo aéreo' : '')).slice(0, 30),
+    calle: l ? l.calle : '', cp: l ? l.cp : '', poblacion: l ? l.poblacion : '', provincia: l ? l.provincia : '', ccaa: l ? l.ccaa : '',
+    centro: [+p[0].toFixed(6), +p[1].toFixed(6)], radio,
+    vertices: a ? a.filter((_, i) => i % paso === 0).map(v => [+v[1].toFixed(6), +v[0].toFixed(6)]) : null,
+    zona: zonaVuelo ? zonaVuelo.nombre : '', motivo: zu.motivoUrbano || '',
+    dron, dronDatos: leerLista('pd-drones').find(d => d.modelo === dron) || null,
+    piloto: pil === 'yo' ? { yo:true } : (leerLista('pd-pilotos').find(x => x.doc === pil) || { yo:true }),
+  };
+}
 async function enviarComunicado(b, zu, h, pLugar){
-  const antes = b.textContent;
-  const texto = textoComunicado(zu, h, await pLugar);
+  const antes = b.textContent, lugar = await pLugar;
+  const texto = textoComunicado(zu, h, lugar);
   const fin = t => { b.textContent = t; setTimeout(() => b.textContent = antes, 2500); };
   // con la clave del PC, los datos van al buzón y el PC abre la sede y rellena el formulario
   const clave = $('dPc').value.trim();
   if (clave){
     b.disabled = true; b.textContent = 'Enviando al PC…';
     try {
-      const r = await (await fetch(TRADUCTOR, { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify({ clave, datos:{ texto, dron: $('dDron').value.trim() } }) })).json();
+      const r = await (await fetch(TRADUCTOR, { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify({ clave, datos:{ texto, dron: $('dDron').value, campos: camposComunicado(zu, h, lugar) } }) })).json();
       if (r.error) throw new Error(r.error);
       b.disabled = false;
       fin('✅ Enviado: entra en el PC y pon tu Cl@ve');
@@ -1241,6 +1335,8 @@ function abrirCorreo(z, p, h, foto){
 }
 
 cargar();
+pintarDrones($('dDron').value); pintarPilotos($('dPiloto').value);
+$('dNombre').addEventListener('change', () => pintarPilotos($('dPiloto').value));
 (() => {
   const u = new URL(location.href), c = u.searchParams.get('pc');
   if (!c) return;
